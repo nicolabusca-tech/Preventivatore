@@ -87,6 +87,7 @@ model Quote {
   // Diagnosi & ROI (v1.5)
   originCliente          String?
   estrattoDiagnosi       String?
+  diagnosiGiaPagata      Boolean @default(true) // voucher diagnostica già versata (−497€) se true
   roiPreventiviMese      Float?
   roiImportoMedio        Float?
   roiConversioneAttuale  Float?

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
+const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
     crmCustomerId,
     scontoAiVocaleAnnuale,
     scontoWaAnnuale,
+    diagnosiGiaPagata,
     items,
     dceProductId,
     notes,
@@ -81,6 +83,8 @@ export async function POST(req: Request) {
   const defaultExpiry = new Date();
   defaultExpiry.setDate(defaultExpiry.getDate() + 30);
 
+  const diagnosiPaid = diagnosiGiaPagata !== undefined ? !!diagnosiGiaPagata : true;
+
   // Enforce: una sola DCE, e deve essere quella selezionata da Product (no prezzi liberi)
   const itemsWithoutDce = Array.isArray(items)
     ? items.filter(
@@ -91,8 +95,35 @@ export async function POST(req: Request) {
       )
     : [];
 
+  const itemsWithoutDiagnosi = itemsWithoutDce.filter(
+    (it: any) => !it || typeof it.productCode !== "string" || it.productCode !== DIAGNOSI_CODE
+  );
+
+  const diagnosiItem = !diagnosiPaid
+    ? await prisma.product.findUnique({
+        where: { code: DIAGNOSI_CODE },
+        select: { code: true, name: true, price: true, isMonthly: true },
+      })
+    : null;
+
+  if (!diagnosiPaid && (!diagnosiItem || diagnosiItem.isMonthly)) {
+    return NextResponse.json({ error: "Prodotto Diagnosi Strategica non valido a listino." }, { status: 400 });
+  }
+
   const finalItems = [
-    ...itemsWithoutDce,
+    ...itemsWithoutDiagnosi,
+    ...(diagnosiPaid
+      ? []
+      : [
+          {
+            productCode: diagnosiItem!.code,
+            productName: diagnosiItem!.name,
+            price: diagnosiItem!.price,
+            quantity: 1,
+            isMonthly: false,
+            notes: null,
+          },
+        ]),
     {
       productCode: dceProduct.code,
       productName: dceProduct.name,
@@ -121,6 +152,7 @@ export async function POST(req: Request) {
       clientProvince: clientProvince ?? null,
       originCliente: originCliente ?? null,
       estrattoDiagnosi: estrattoDiagnosi ?? null,
+      diagnosiGiaPagata: diagnosiPaid,
       roiPreventiviMese: roiPreventiviMese ?? null,
       roiImportoMedio: roiImportoMedio ?? null,
       roiConversioneAttuale: roiConversioneAttuale ?? null,

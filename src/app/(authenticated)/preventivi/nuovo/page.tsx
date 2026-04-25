@@ -27,6 +27,7 @@ type Product = {
 };
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
+const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 
 const blockLabels: Record<string, string> = {
   FRONTEND: "Front-end",
@@ -105,6 +106,7 @@ export default function NuovoPreventivoPage() {
   const [originCliente, setOriginCliente] = useState("");
   const [estrattoDiagnosi, setEstrattoDiagnosi] = useState("");
   const [roiInputs, setRoiInputs] = useState<RoiFormInputs>(() => mergeRoiDefaults(null));
+  const [diagnosiGiaPagata, setDiagnosiGiaPagata] = useState(true);
 
   const [selected, setSelected] = useState<Map<string, number>>(new Map());
   const [dceProductId, setDceProductId] = useState<string>("");
@@ -178,10 +180,17 @@ export default function NuovoPreventivoPage() {
     let aiMonthly = 0;
     let waMonthly = 0;
 
+    // Diagnosi: se già pagata, va scalata come voucher (−497€) dal setup
+    // Se NON è già pagata, viene addebitata come voce setup (+497€) in automatico
+    const diagnosiAmount = 497;
+    setup += diagnosiGiaPagata ? -diagnosiAmount : diagnosiAmount;
+    if (setup < 0) setup = 0;
+
     const dce = dceOptions.find((p) => p.id === dceProductId);
     if (dce) monthly += dce.price;
 
     for (const [code, qty] of selected.entries()) {
+      if (code === DIAGNOSI_CODE) continue;
       const p = products.find((x) => x.code === code);
       if (!p) continue;
       const itemTotal = p.price * qty;
@@ -226,6 +235,7 @@ export default function NuovoPreventivoPage() {
     selected,
     dceOptions,
     dceProductId,
+    diagnosiGiaPagata,
     scontoAiVocaleAnnuale,
     scontoCrmAnnuale,
     scontoWaAnnuale,
@@ -351,6 +361,7 @@ export default function NuovoPreventivoPage() {
         clientSdi: clientSdi.trim() || null,
         originCliente: originCliente.trim() || null,
         estrattoDiagnosi: estrattoDiagnosi.trim() || null,
+        diagnosiGiaPagata,
         roiPreventiviMese: roiInputs.preventiviMese,
         roiImportoMedio: roiInputs.importoMedio,
         roiConversioneAttuale: roiInputs.conversioneAttuale,
@@ -576,6 +587,19 @@ export default function NuovoPreventivoPage() {
             <h2 className="text-2xl mb-4">Diagnosi &amp; ROI (prima della proposta)</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
+                <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="checkbox mt-0.5"
+                    checked={diagnosiGiaPagata}
+                    onChange={(e) => setDiagnosiGiaPagata(e.target.checked)}
+                  />
+                  <span>
+                    Diagnosi Strategica già pagata (applica voucher −{formatEuro(497)} sul setup)
+                  </span>
+                </label>
+              </div>
+              <div className="sm:col-span-2">
                 <label className="label">Origine cliente</label>
                 <input
                   type="text"
@@ -683,7 +707,7 @@ export default function NuovoPreventivoPage() {
             <div className="space-y-2.5">
               {blockOrder.map((block) => {
                 if (block === "DCE") return null;
-                const list = productsByBlock.get(block) || [];
+                const list = (productsByBlock.get(block) || []).filter((p) => p.code !== DIAGNOSI_CODE);
                 if (list.length === 0) return null;
                 const isExpanded = expandedBlocks.has(block);
                 const selectedCount = list.filter((p) => selected.has(p.code)).length;

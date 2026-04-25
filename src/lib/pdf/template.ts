@@ -11,6 +11,8 @@ import {
 import { generateStyles } from "./styles";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
+const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
+const DIAGNOSI_VOUCHER_AMOUNT = 497;
 
 type QuoteWithRelations = Quote & {
   items: QuoteItem[];
@@ -34,6 +36,21 @@ function splitItems(quote: QuoteWithRelations) {
   const setup = quote.items.filter((i) => !i.isMonthly);
   const monthly = quote.items.filter((i) => i.isMonthly);
   return { setup, monthly };
+}
+
+function computeSetupTotals(quote: QuoteWithRelations) {
+  const setupBefore = quote.setupBeforeDiscount || quote.totalSetup;
+  const voucherDiagnosi = quote.diagnosiGiaPagata ? DIAGNOSI_VOUCHER_AMOUNT : 0;
+
+  const baseAfterVoucher = Math.max(0, setupBefore - voucherDiagnosi);
+  const discountAmount =
+    quote.discountPercent > 0 ? Math.round(baseAfterVoucher * (quote.discountPercent / 100)) : 0;
+
+  let totalSetup = baseAfterVoucher - discountAmount;
+  if (quote.voucherAuditApplied) totalSetup -= 147;
+  if (totalSetup < 0) totalSetup = 0;
+
+  return { setupBefore, voucherDiagnosi, discountAmount, totalSetup };
 }
 
 function renderCover(quote: QuoteWithRelations) {
@@ -239,7 +256,9 @@ function renderItemsTable(title: string, subtitle: string, items: QuoteItem[]) {
 }
 
 function categorizeForPage3(quote: QuoteWithRelations) {
-  const setup = quote.items.filter((i) => !i.isMonthly);
+  const setup = quote.items.filter(
+    (i) => !i.isMonthly && !(quote.diagnosiGiaPagata && i.productCode === DIAGNOSI_CODE)
+  );
   const acceleratori = quote.items.filter((i) => i.isMonthly && !i.productCode.startsWith("DCE"));
   const direzione = quote.items.filter((i) => i.isMonthly && i.productCode.startsWith("DCE"));
   return { setup, acceleratori, direzione };
@@ -401,7 +420,8 @@ function renderPage5(quote: QuoteWithRelations) {
     const contrattiAttesi = preventiviAnnui * conversioneAttesa;
     margineAtteso = contrattiAttesi * marginePerContratto;
 
-    investimentoPrimoAnno = Math.max(0, quote.totalSetup + quote.totalMonthly * 12);
+    const setupTotals = computeSetupTotals(quote);
+    investimentoPrimoAnno = Math.max(0, setupTotals.totalSetup + quote.totalMonthly * 12);
     const deltaPrimoAnno = margineAtteso - margineAttuale;
     roi = investimentoPrimoAnno > 0 ? deltaPrimoAnno / investimentoPrimoAnno : null;
   }
@@ -530,6 +550,8 @@ function renderPage6(quote: QuoteWithRelations) {
       ? quote.totalAnnual
       : quote.totalSetup + quote.totalMonthly * 12;
 
+  const setupTotals = computeSetupTotals(quote);
+
   const dceMonthly = quote.items
     .filter((i) => i.isMonthly && DCE_ALLOWED_CODES.includes(i.productCode as any))
     .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
@@ -564,16 +586,28 @@ function renderPage6(quote: QuoteWithRelations) {
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Setup sistema · una tantum</td>
             <td class="right" style="border-bottom:none"><span style="font-size:18pt">${escapeHtml(
-              formatEuro(quote.setupBeforeDiscount || quote.totalSetup)
+              formatEuro(setupTotals.setupBefore)
             )}</span></td>
           </tr>
           ${
-            quote.discountAmount > 0 && discountLabel
+            setupTotals.voucherDiagnosi > 0
+              ? `
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Voucher Diagnosi Strategica già versata</td>
+            <td class="right" style="border-bottom:none;color:var(--mc-orange)"><b>- ${escapeHtml(
+              formatEuro(setupTotals.voucherDiagnosi)
+            )}</b></td>
+          </tr>
+          `
+              : ""
+          }
+          ${
+            setupTotals.discountAmount > 0 && discountLabel
               ? `
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75)">${escapeHtml(discountLabel)}</td>
             <td class="right" style="border-bottom:none;color:var(--mc-orange)"><b>- ${escapeHtml(
-              formatEuro(quote.discountAmount)
+              formatEuro(setupTotals.discountAmount)
             )}</b></td>
           </tr>
           `
@@ -595,7 +629,7 @@ function renderPage6(quote: QuoteWithRelations) {
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale setup</td>
             <td class="right" style="border-bottom:none"><span class="display" style="font-style:italic;font-size:24pt;color:var(--mc-orange)">${escapeHtml(
-              formatEuro(quote.totalSetup)
+              formatEuro(setupTotals.totalSetup)
             )}</span></td>
           </tr>
           <tr><td colspan="2" style="border-bottom:none;height:4mm"></td></tr>
@@ -651,7 +685,7 @@ function renderPage6(quote: QuoteWithRelations) {
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75);text-transform:uppercase;letter-spacing:0.14em;font-size:9pt"><b>Primo anno completo</b></td>
             <td class="right" style="border-bottom:none"><span class="display" style="font-style:italic;font-size:28pt;color:var(--mc-orange)">${escapeHtml(
-              formatEuro(primoAnnoCompleto)
+              formatEuro(Math.max(0, setupTotals.totalSetup + quote.totalMonthly * 12))
             )}</span></td>
           </tr>
         </tbody>

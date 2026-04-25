@@ -141,7 +141,7 @@ function renderPage2(quote: QuoteWithRelations) {
           <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.8)">LIVELLO 3</div>
           <div class="display" style="font-size:14pt;margin-top:2mm;font-style:italic">Direzione</div>
           <div class="muted" style="font-style:italic;font-size:8pt;margin-top:2mm;color:rgba(250,248,244,0.7)">
-            Il presidio mensile. Senza regia, il sistema muore.
+            La direzione mensile. Senza regia, il sistema muore.
           </div>
         </div>
       </div>
@@ -257,12 +257,12 @@ function renderPage3(quote: QuoteWithRelations) {
 
     ${renderItemsTable("SETUP SISTEMA", "Le fondamenta · investimento una tantum", cat.setup)}
     ${renderItemsTable("ACCELERATORI", "Moduli che accorciano i tempi · canoni mensili", cat.acceleratori)}
-    ${renderItemsTable("DIREZIONE E COACHING OPERATIVO", "Il presidio · canone mensile", cat.direzione)}
+    ${renderItemsTable("DIREZIONE E COACHING OPERATIVO", "La direzione · canone mensile", cat.direzione)}
 
     <div class="no-break box box-warm" style="margin-top:8mm;border:0.5pt solid var(--mc-orange)">
-      <div class="caps orange" style="font-size:9pt">COSA SUCCEDE OGNI MESE NEL PRESIDIO</div>
+      <div class="caps orange" style="font-size:9pt">COSA SUCCEDE OGNI MESE NELLA DIREZIONE</div>
       <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
-        Il prezzo del presidio non paga “essere reperibili”. Paga un ciclo operativo ripetibile, ogni mese, in questa sequenza:
+        Il prezzo della direzione non paga “essere reperibili”. Paga un ciclo operativo ripetibile, ogni mese, in questa sequenza:
       </div>
       <ol style="margin-top:3mm;padding-left:18px">
         <li><b>Raccolta numeri reali</b> — Lead, chiamate, appuntamenti, preventivi, contratti: tutto dal CRM (e dalle fonti collegate), non “a sensazione”.</li>
@@ -498,7 +498,7 @@ function renderPage5(quote: QuoteWithRelations) {
       }
 
       <div style="margin-top:4mm">
-        <div style="font-weight:800;font-size:11pt">${hasRoiData ? "2" : "1"}) Marketing che gira senza presidio commerciale</div>
+        <div style="font-weight:800;font-size:11pt">${hasRoiData ? "2" : "1"}) Marketing che gira senza direzione commerciale</div>
         <div style="font-size:10pt;margin-top:1mm">
           Ogni euro investito in marketing che arriva su un processo commerciale non strutturato è budget bruciato a metà.
           Calcolo medio sul tuo settore: 35-45 % di efficienza persa.
@@ -577,7 +577,7 @@ function renderPage6(quote: QuoteWithRelations) {
           </tr>
           <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18)"></td></tr>
           <tr>
-            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Presidio mensile</td>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Direzione mensile</td>
             <td class="right" style="border-bottom:none"><span style="font-size:16pt">${escapeHtml(
               formatEuro(quote.totalMonthly)
             )} / mese</span></td>
@@ -619,10 +619,10 @@ function renderPage6(quote: QuoteWithRelations) {
         </thead>
         <tbody>
           <tr>
-            <td>Bonifico standard alla firma per il Setup. Presidio mensile addebitato mese per mese.</td>
+            <td>Bonifico standard alla firma per il Setup. Direzione mensile addebitata mese per mese.</td>
             <td style="background:var(--mc-green-bg)"><b>Setup ${escapeHtml(
               formatEuro(stripeSetupSconto)
-            )}</b> via Stripe. Presidio mensile a parte.</td>
+            )}</b> via Stripe. Direzione mensile a parte.</td>
             <td style="background:var(--mc-orange-light)"><b>${escapeHtml(
               formatEuro(anticipatoSconto)
             )}</b> (Setup + 12 mesi) in anticipo alla firma.</td>
@@ -690,7 +690,7 @@ function renderPage6(quote: QuoteWithRelations) {
         Io dirigo la macchina. Il mio team la fa girare ogni giorno. È come funziona qualunque azienda ben organizzata: chi decide non è la stessa persona che esegue.
       </div>
       <div style="margin-top:2mm;font-size:10pt">
-        Metodo Cantiere non sostituisce un direttore commerciale interno full-time. Lo anticipa. Ti dà la funzione direzionale, il sistema, gli strumenti e il presidio mensile,
+        Metodo Cantiere non sostituisce un direttore commerciale interno full-time. Lo anticipa. Ti dà la funzione direzionale, il sistema, gli strumenti e la direzione mensile,
         mentre tu cresci. Quando sarai pronto a inserire un direttore tuo, noi ti aiuteremo a selezionarlo, formarlo e a passargli le consegne in modo ordinato.
       </div>
     </div>
@@ -734,7 +734,7 @@ function renderPage7(quote: QuoteWithRelations) {
       <div class="caps orange" style="font-size:8pt">PROSSIMI PASSI</div>
       <ol style="margin-top:2mm;padding-left:18px;font-size:12pt">
         <li>Conferma del piano operativo entro la validità (15 giorni dalla data di emissione).</li>
-        <li>Firma del contratto e pagamento del setup. Primo addebito presidio al lancio operativo.</li>
+        <li>Firma del contratto e pagamento del setup. Primo addebito direzione al lancio operativo.</li>
         <li>Call di onboarding con il team Metodo Cantiere entro 7 giorni dalla firma.</li>
         <li>Lancio operativo del sistema con KPI dei primi 90 giorni concordati insieme.</li>
       </ol>
@@ -779,7 +779,7 @@ function renderPage7(quote: QuoteWithRelations) {
       <div class="no-break box box-warm" style="border:1px solid #EDE6D6;margin-top:3mm">
         <div style="font-weight:800;font-size:11pt">E se Metodo Cantiere sparisce dopo aver incassato?</div>
         <div style="margin-top:2mm;font-size:10pt">
-          La call di direzione mensile è scritta nel contratto, non promessa a voce. La fee di presidio mensile la paghi solo se le call avvengono.
+          La call di direzione mensile è scritta nel contratto, non promessa a voce. La fee di direzione mensile la paghi solo se le call avvengono.
           Vedi il team in onboarding, parli con loro nelle call di lavoro: direzione decide e indirizza, il team esegue.
         </div>
       </div>
@@ -787,7 +787,7 @@ function renderPage7(quote: QuoteWithRelations) {
       <div class="no-break box box-warm" style="border:1px solid #EDE6D6;margin-top:3mm">
         <div style="font-weight:800;font-size:11pt">Quanto sono vincolato? E se voglio uscire prima?</div>
         <div style="margin-top:2mm;font-size:10pt">
-          Il presidio mensile prevede una permanenza di 6 mesi minimi. Dopo i 6 mesi sei libero di uscire mese su mese, senza penali, con preavviso di 30 giorni.
+          La direzione mensile prevede una permanenza di 6 mesi minimi. Dopo i 6 mesi sei libero di uscire mese su mese, senza penali, con preavviso di 30 giorni.
           La garanzia 60 giorni copre la fase di attivazione: se entro 60 giorni il sistema non è operativo, continuiamo a lavorare gratis fino a quando lo è.
         </div>
       </div>

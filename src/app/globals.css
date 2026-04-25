@@ -1,0 +1,699 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* ============================================================
+   DESIGN SYSTEM METODO CANTIERE — v1.2
+   Light / Dark mode con variabili CSS.
+   Arancione #FF6A00 come accento unico su entrambi i temi.
+============================================================ */
+
+:root,
+:root[data-theme="light"] {
+  /* Accento brand */
+  --mc-accent: #FF6A00;
+  --mc-accent-hover: #E55F00;
+  --mc-accent-soft: rgba(255, 106, 0, 0.08);
+  --mc-accent-ring: rgba(255, 106, 0, 0.28);
+
+  /* Superfici (dal più basso al più elevato) */
+  --mc-bg: #FAF8F4;
+  --mc-bg-inset: #F5F1E8;
+  --mc-bg-elevated: #FFFFFF;
+  --mc-bg-hover: #F5F1E8;
+  --mc-bg-selected: rgba(255, 106, 0, 0.06);
+
+  /* Testo */
+  --mc-text: #1A1A1A;
+  --mc-text-secondary: #706E65;
+  --mc-text-muted: #8E8A7E;
+  --mc-text-inverse: #FAF8F4;
+
+  /* Bordi */
+  --mc-border: #E5DFD0;
+  --mc-border-strong: #D4CBB5;
+  --mc-border-inset: #EEE7D4;
+
+  /* Stati semantici */
+  --mc-success: #2D7A4F;
+  --mc-success-bg: rgba(45, 122, 79, 0.08);
+  --mc-success-border: rgba(45, 122, 79, 0.22);
+  --mc-warning: #B07800;
+  --mc-warning-bg: rgba(176, 120, 0, 0.09);
+  --mc-warning-border: rgba(176, 120, 0, 0.22);
+  --mc-danger: #C73E3A;
+  --mc-danger-bg: rgba(199, 62, 58, 0.08);
+  --mc-danger-border: rgba(199, 62, 58, 0.22);
+  --mc-info: #2D5C8A;
+  --mc-info-bg: rgba(45, 92, 138, 0.08);
+  --mc-info-border: rgba(45, 92, 138, 0.22);
+
+  /* Nav */
+  --mc-nav-bg: #141310;
+  --mc-nav-text: rgba(250, 248, 244, 0.78);
+  --mc-nav-text-hover: #FFFFFF;
+  --mc-nav-border: rgba(255, 255, 255, 0.08);
+
+  /* Ombre */
+  --mc-shadow-sm: 0 1px 2px rgba(26, 26, 26, 0.04);
+  --mc-shadow: 0 1px 3px rgba(26, 26, 26, 0.06), 0 1px 2px rgba(26, 26, 26, 0.04);
+  --mc-shadow-lg: 0 10px 25px -5px rgba(26, 26, 26, 0.08), 0 4px 10px -3px rgba(26, 26, 26, 0.04);
+}
+
+:root[data-theme="dark"] {
+  /* Accento brand (stesso arancione, funziona bene su fondo scuro) */
+  --mc-accent: #FF7A1A;
+  --mc-accent-hover: #FF8A35;
+  --mc-accent-soft: rgba(255, 122, 26, 0.12);
+  --mc-accent-ring: rgba(255, 122, 26, 0.36);
+
+  /* Superfici (warm dark — non grigio freddo) */
+  --mc-bg: #141310;
+  --mc-bg-inset: #17150F;
+  --mc-bg-elevated: #1E1C18;
+  --mc-bg-hover: #25231E;
+  --mc-bg-selected: rgba(255, 122, 26, 0.1);
+
+  /* Testo */
+  --mc-text: #F5F1E8;
+  --mc-text-secondary: #ABA69A;
+  --mc-text-muted: #7A7569;
+  --mc-text-inverse: #141310;
+
+  /* Bordi */
+  --mc-border: #2C2A25;
+  --mc-border-strong: #3E3B34;
+  --mc-border-inset: #252320;
+
+  /* Stati semantici (saturazione ridotta per dark) */
+  --mc-success: #5BB981;
+  --mc-success-bg: rgba(91, 185, 129, 0.1);
+  --mc-success-border: rgba(91, 185, 129, 0.25);
+  --mc-warning: #E3A835;
+  --mc-warning-bg: rgba(227, 168, 53, 0.1);
+  --mc-warning-border: rgba(227, 168, 53, 0.25);
+  --mc-danger: #E76964;
+  --mc-danger-bg: rgba(231, 105, 100, 0.1);
+  --mc-danger-border: rgba(231, 105, 100, 0.25);
+  --mc-info: #6FA1D1;
+  --mc-info-bg: rgba(111, 161, 209, 0.1);
+  --mc-info-border: rgba(111, 161, 209, 0.25);
+
+  /* Nav (leggermente più scura del bg) */
+  --mc-nav-bg: #0C0B09;
+  --mc-nav-text: rgba(245, 241, 232, 0.72);
+  --mc-nav-text-hover: #FFFFFF;
+  --mc-nav-border: rgba(255, 255, 255, 0.06);
+
+  /* Ombre (più profonde su dark) */
+  --mc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --mc-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --mc-shadow-lg: 0 15px 35px -5px rgba(0, 0, 0, 0.5), 0 6px 14px -3px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================
+   BASE
+============================================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color: var(--mc-text);
+  background: var(--mc-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  color: var(--mc-text);
+  letter-spacing: -0.015em;
+}
+
+h1 {
+  line-height: 1.1;
+}
+
+.font-mono,
+.font-mono * {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+::selection {
+  background: var(--mc-accent);
+  color: #FFFFFF;
+}
+
+/* Scrollbar raffinata */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--mc-border);
+  border-radius: 10px;
+  border: 2px solid var(--mc-bg);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--mc-border-strong);
+}
+
+/* ============================================================
+   COMPONENTI — BUTTON
+============================================================ */
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 font-semibold rounded-lg transition-all duration-150 disabled:cursor-not-allowed text-sm;
+  background: var(--mc-accent);
+  color: #FFFFFF;
+  border: 1px solid var(--mc-accent);
+  box-shadow: var(--mc-shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--mc-accent-hover);
+  border-color: var(--mc-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--mc-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 font-semibold rounded-lg transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+  background: var(--mc-bg-elevated);
+  color: var(--mc-text);
+  border: 1px solid var(--mc-border-strong);
+  box-shadow: var(--mc-shadow-sm);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--mc-accent);
+  color: var(--mc-accent);
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 px-3 py-2 font-medium rounded-lg transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+  color: var(--mc-text-secondary);
+  background: transparent;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--mc-bg-hover);
+  color: var(--mc-text);
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 font-semibold rounded-lg transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-sm;
+  background: var(--mc-danger);
+  color: #FFFFFF;
+  border: 1px solid var(--mc-danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+/* ============================================================
+   COMPONENTI — CARD
+============================================================ */
+
+.card {
+  background: var(--mc-bg-elevated);
+  border: 1px solid var(--mc-border);
+  border-radius: 12px;
+  box-shadow: var(--mc-shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card-interactive {
+  @apply card;
+  cursor: pointer;
+}
+
+.card-interactive:hover {
+  border-color: var(--mc-border-strong);
+  box-shadow: var(--mc-shadow);
+}
+
+.card-accent {
+  @apply card;
+  border-color: var(--mc-accent);
+  box-shadow: var(--mc-shadow), 0 0 0 1px var(--mc-accent-ring);
+}
+
+.card-muted {
+  @apply card;
+  background: var(--mc-bg-inset);
+  border-color: var(--mc-border-inset);
+  box-shadow: none;
+}
+
+/* ============================================================
+   COMPONENTI — INPUT
+============================================================ */
+
+.input {
+  @apply w-full px-3.5 py-2.5 rounded-lg text-sm transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed;
+  background: var(--mc-bg-elevated);
+  color: var(--mc-text);
+  border: 1px solid var(--mc-border);
+}
+
+.input::placeholder {
+  color: var(--mc-text-muted);
+}
+
+.input:hover:not(:disabled):not(:focus) {
+  border-color: var(--mc-border-strong);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--mc-accent);
+  box-shadow: 0 0 0 3px var(--mc-accent-ring);
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.55;
+}
+
+.label {
+  @apply block text-xs font-semibold uppercase tracking-wider mb-1.5;
+  color: var(--mc-text-secondary);
+}
+
+.helper-text {
+  @apply text-xs mt-1.5;
+  color: var(--mc-text-muted);
+}
+
+/* ============================================================
+   COMPONENTI — BADGE
+============================================================ */
+
+.badge {
+  @apply inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold rounded-md whitespace-nowrap;
+}
+
+.badge-pending {
+  background: var(--mc-warning-bg);
+  color: var(--mc-warning);
+  border: 1px solid var(--mc-warning-border);
+}
+
+.badge-sent {
+  background: var(--mc-info-bg);
+  color: var(--mc-info);
+  border: 1px solid var(--mc-info-border);
+}
+
+.badge-accepted {
+  background: var(--mc-success-bg);
+  color: var(--mc-success);
+  border: 1px solid var(--mc-success-border);
+}
+
+.badge-rejected {
+  background: var(--mc-danger-bg);
+  color: var(--mc-danger);
+  border: 1px solid var(--mc-danger-border);
+}
+
+.badge-expired {
+  background: var(--mc-bg-inset);
+  color: var(--mc-text-muted);
+  border: 1px solid var(--mc-border);
+}
+
+.badge-accent {
+  background: var(--mc-accent-soft);
+  color: var(--mc-accent);
+  border: 1px solid var(--mc-accent-ring);
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   COMPONENTI — ALERT
+============================================================ */
+
+.alert {
+  @apply flex items-start gap-3 px-4 py-3 rounded-lg text-sm;
+  border: 1px solid;
+}
+
+.alert-success {
+  background: var(--mc-success-bg);
+  border-color: var(--mc-success-border);
+  color: var(--mc-success);
+}
+
+.alert-warning {
+  background: var(--mc-warning-bg);
+  border-color: var(--mc-warning-border);
+  color: var(--mc-warning);
+}
+
+.alert-danger {
+  background: var(--mc-danger-bg);
+  border-color: var(--mc-danger-border);
+  color: var(--mc-danger);
+}
+
+.alert-info {
+  background: var(--mc-info-bg);
+  border-color: var(--mc-info-border);
+  color: var(--mc-info);
+}
+
+/* ============================================================
+   COMPONENTI — TABELLA
+============================================================ */
+
+.mc-table {
+  @apply w-full text-sm;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.mc-table thead tr {
+  background: var(--mc-bg-inset);
+}
+
+.mc-table thead th {
+  @apply px-4 py-3 text-left text-xs font-bold uppercase tracking-wider;
+  color: var(--mc-text-secondary);
+  border-bottom: 1px solid var(--mc-border);
+}
+
+.mc-table thead th:first-child {
+  border-top-left-radius: 11px;
+}
+.mc-table thead th:last-child {
+  border-top-right-radius: 11px;
+}
+
+.mc-table tbody tr {
+  transition: background-color 0.1s ease;
+}
+
+.mc-table tbody tr:hover {
+  background: var(--mc-bg-hover);
+}
+
+.mc-table tbody tr + tr td {
+  border-top: 1px solid var(--mc-border);
+}
+
+.mc-table tbody td {
+  @apply px-4 py-3;
+  color: var(--mc-text);
+}
+
+/* ============================================================
+   COMPONENTI — STAT CARD
+============================================================ */
+
+.stat-card {
+  @apply card p-5 flex flex-col gap-1;
+}
+
+.stat-label {
+  @apply text-xs font-bold uppercase tracking-wider;
+  color: var(--mc-text-secondary);
+}
+
+.stat-value {
+  @apply text-3xl font-bold leading-tight;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: var(--mc-text);
+  letter-spacing: -0.02em;
+}
+
+.stat-sub {
+  @apply text-xs;
+  color: var(--mc-text-muted);
+}
+
+/* ============================================================
+   NAV LINK
+============================================================ */
+
+.nav-link {
+  @apply inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors;
+  color: var(--mc-nav-text);
+}
+
+.nav-link:hover {
+  color: var(--mc-nav-text-hover);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nav-link-active {
+  background: var(--mc-accent);
+  color: #FFFFFF;
+}
+
+.nav-link-active:hover {
+  background: var(--mc-accent-hover);
+  color: #FFFFFF;
+}
+
+/* ============================================================
+   UTILITY — TESTI
+============================================================ */
+
+.text-mc-text {
+  color: var(--mc-text);
+}
+.text-mc-secondary {
+  color: var(--mc-text-secondary);
+}
+.text-mc-muted {
+  color: var(--mc-text-muted);
+}
+.text-mc-accent {
+  color: var(--mc-accent);
+}
+.text-mc-success {
+  color: var(--mc-success);
+}
+.text-mc-warning {
+  color: var(--mc-warning);
+}
+.text-mc-danger {
+  color: var(--mc-danger);
+}
+.text-mc-info {
+  color: var(--mc-info);
+}
+
+/* ============================================================
+   UTILITY — BG
+============================================================ */
+
+.bg-mc-bg {
+  background: var(--mc-bg);
+}
+.bg-mc-inset {
+  background: var(--mc-bg-inset);
+}
+.bg-mc-elevated {
+  background: var(--mc-bg-elevated);
+}
+.bg-mc-accent {
+  background: var(--mc-accent);
+}
+.bg-mc-accent-soft {
+  background: var(--mc-accent-soft);
+}
+.bg-mc-success-soft {
+  background: var(--mc-success-bg);
+}
+.bg-mc-danger-soft {
+  background: var(--mc-danger-bg);
+}
+
+/* ============================================================
+   UTILITY — BORDER
+============================================================ */
+
+.border-mc {
+  border-color: var(--mc-border);
+}
+.border-mc-strong {
+  border-color: var(--mc-border-strong);
+}
+.border-mc-accent {
+  border-color: var(--mc-accent);
+}
+.border-mc-success {
+  border-color: var(--mc-success-border);
+}
+.border-mc-danger {
+  border-color: var(--mc-danger-border);
+}
+
+/* ============================================================
+   DIVIDE UTILITIES (per tabelle custom)
+============================================================ */
+
+.divide-mc > * + * {
+  border-top: 1px solid var(--mc-border);
+}
+
+/* ============================================================
+   ANIMAZIONI
+============================================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes pulse-accent {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--mc-accent-ring);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+.pulse-accent {
+  animation: pulse-accent 2s ease-in-out infinite;
+}
+
+/* ============================================================
+   CHECKBOX CUSTOM
+============================================================ */
+
+.checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--mc-border-strong);
+  border-radius: 4px;
+  background: var(--mc-bg-elevated);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.checkbox:hover {
+  border-color: var(--mc-accent);
+}
+
+.checkbox:checked {
+  background: var(--mc-accent);
+  border-color: var(--mc-accent);
+}
+
+.checkbox:checked::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border: solid #FFFFFF;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--mc-accent-ring);
+}
+
+/* ============================================================
+   TEMA — TOGGLE ANIMAZIONE
+============================================================ */
+
+.theme-toggle-track {
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--mc-border);
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+html[data-theme="dark"] .theme-toggle-track {
+  background: var(--mc-accent);
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mc-text-secondary);
+}
+
+html[data-theme="dark"] .theme-toggle-thumb {
+  transform: translateX(20px);
+  color: var(--mc-accent);
+}

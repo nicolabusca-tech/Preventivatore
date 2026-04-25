@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --mc-orange: #FF6A00;
+  --mc-black: #1A1A1A;
+  --mc-dark: #212121;
+  --mc-muted: #706E65;
+  --mc-beige: #FAF8F4;
+  --mc-border: #E5DFD0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  padding: 0;
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--mc-black);
+  background: var(--mc-beige);
+}
+
+h1, h2, h3 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 700;
+  color: var(--mc-black);
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center px-6 py-3 bg-mc-orange text-white font-semibold rounded-md hover:bg-mc-orange-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center px-6 py-3 bg-white border-2 border-mc-border text-mc-black font-semibold rounded-md hover:border-mc-orange transition-colors;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center px-4 py-2 bg-mc-red text-white font-semibold rounded-md hover:opacity-90 transition-opacity text-sm;
+}
+
+.card {
+  @apply bg-white rounded-lg border border-mc-border;
+}
+
+.input {
+  @apply w-full px-4 py-2 border border-mc-border rounded-md focus:outline-none focus:border-mc-orange focus:ring-1 focus:ring-mc-orange bg-white;
+}
+
+.label {
+  @apply block text-sm font-semibold text-mc-black mb-1;
+}
+
+.badge {
+  @apply inline-flex items-center px-2 py-1 text-xs font-semibold rounded;
+}
+
+.badge-pending {
+  @apply bg-amber-100 text-amber-800;
+}
+
+.badge-sent {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.badge-accepted {
+  @apply bg-green-100 text-green-800;
+}
+
+.badge-rejected {
+  @apply bg-red-100 text-red-800;
+}
+
+.badge-expired {
+  @apply bg-gray-100 text-gray-600;
+}

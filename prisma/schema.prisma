@@ -45,6 +45,9 @@ model Product {
   diagnosiPeso Float   @default(0) // 0–100: quota “diagnosi” sul prezzo per il calcolo ROI
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  // Preventivi che usano questo prodotto come DCE selezionata
+  quotesAsDce Quote[]  @relation("QuoteDceProduct")
 }
 
 model RoiConfig {
@@ -62,6 +65,10 @@ model Quote {
   quoteNumber     String      @unique // numero leggibile tipo "Q2026-0001"
   userId          String
   user            User        @relation(fields: [userId], references: [id])
+
+  // Direzione Commerciale Esterna (DCE) — deve puntare a un prodotto a listino (FK)
+  dceProductId    String?
+  dceProduct      Product?    @relation("QuoteDceProduct", fields: [dceProductId], references: [id])
 
   // Dati cliente
   clientName      String
@@ -143,7 +150,11 @@ model DiscountCode {
   id              String   @id @default(cuid())
   code            String   @unique // es. "AMICO-15"
   description     String?  // a cosa serve
-  discountPercent Int      // percentuale sconto (es. 15 per -15%)
+  // Uno dei due deve essere > 0:
+  // - discountPercent: sconto percentuale sul setup (es. 15 per -15%)
+  // - discountAmount: sconto fisso in euro sul setup (es. 500 per -500€)
+  discountPercent Int      @default(0)
+  discountAmount  Int      @default(0)
   maxUses         Int?     // se null = illimitato
   usedCount       Int      @default(0)
   expiresAt       DateTime? // se null = non scade

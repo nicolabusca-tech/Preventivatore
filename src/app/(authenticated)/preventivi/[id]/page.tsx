@@ -4,6 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+type Product = {
+  id: string;
+  code: string;
+  name: string;
+  price: number;
+  isMonthly: boolean;
+};
+
 type QuoteItem = {
   id: string;
   // Supporta sia il vecchio shape UI che lo shape Prisma (QuoteItem)
@@ -24,11 +32,14 @@ type QuoteDetail = {
   quoteNumber: string;
   clientName: string;
   clientCompany: string | null;
+  dceProductId?: string | null;
   totalSetup: number;
   totalMonthly: number;
   totalAnnual: number;
   items: QuoteItem[];
 };
+
+const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 
 function formatEuro(value: number) {
   return new Intl.NumberFormat("it-IT", {
@@ -44,6 +55,8 @@ export default function PreventivoDettaglioPage() {
   const id = params?.id;
 
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
+  const [dceOptions, setDceOptions] = useState<Product[]>([]);
+  const [savingDce, setSavingDce] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,20 +67,29 @@ export default function PreventivoDettaglioPage() {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/quotes/${id}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const body = await r.json().catch(() => null);
+    Promise.all([fetch(`/api/quotes/${id}`), fetch("/api/products")])
+      .then(async ([quoteRes, productsRes]) => {
+        if (!quoteRes.ok) {
+          const body = await quoteRes.json().catch(() => null);
           const message =
             (body && typeof body.error === "string" && body.error) ||
-            `Errore caricamento preventivo (HTTP ${r.status})`;
+            `Errore caricamento preventivo (HTTP ${quoteRes.status})`;
           throw new Error(message);
         }
-        return r.json();
+        const quoteData = await quoteRes.json();
+        const productsData = await productsRes.json().catch(() => []);
+        return { quoteData, productsData };
       })
-      .then((data) => {
+      .then(({ quoteData, productsData }) => {
         if (!alive) return;
-        setQuote(data);
+        setQuote(quoteData);
+        const opts: Product[] = Array.isArray(productsData) ? productsData : [];
+        setDceOptions(
+          opts
+            .filter((p) => DCE_ALLOWED_CODES.includes((p as any).code))
+            .filter((p) => (p as any).isMonthly)
+            .sort((a, b) => (a.price || 0) - (b.price || 0))
+        );
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -85,6 +107,7 @@ export default function PreventivoDettaglioPage() {
   }, [id]);
 
   const items = useMemo(() => quote?.items ?? [], [quote]);
+  const canExportPdf = !!id && !loading && !!quote?.dceProductId;
 
   const rows = useMemo(() => {
     return items.map((it) => {
@@ -144,7 +167,12 @@ export default function PreventivoDettaglioPage() {
               if (!id) return;
               window.open(`/api/quotes/${id}/pdf`, "_blank", "noopener,noreferrer");
             }}
-            disabled={!id || loading}
+            disabled={!canExportPdf}
+            title={
+              !quote?.dceProductId
+                ? "Seleziona prima il livello DCE: senza regia il sistema non parte."
+                : undefined
+            }
           >
             Stampa / PDF
           </button>
@@ -167,6 +195,55 @@ export default function PreventivoDettaglioPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {!quote.dceProductId && (
+            <div className="card p-5 lg:col-span-3">
+              <div className="text-sm font-semibold mb-2">Preventivo incompleto</div>
+              <div className="text-sm" style={{ color: "var(--mc-text-secondary)" }}>
+                Seleziona prima il livello DCE: senza regia il sistema non parte.
+              </div>
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                <select
+                  className="input"
+                  value={quote.dceProductId ?? ""}
+                  onChange={async (e) => {
+                    if (!id) return;
+                    const nextId = e.target.value;
+                    if (!nextId) return;
+                    setSavingDce(true);
+                    setError(null);
+                    try {
+                      const res = await fetch(`/api/quotes/${id}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dceProductId: nextId }),
+                      });
+                      const body = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(body?.error || "Errore aggiornamento DCE");
+                      setQuote(body);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Errore aggiornamento DCE");
+                    } finally {
+                      setSavingDce(false);
+                    }
+                  }}
+                  disabled={savingDce || dceOptions.length === 0}
+                >
+                  <option value="">Seleziona livello DCE…</option>
+                  {dceOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {formatEuro(p.price)}/mese
+                    </option>
+                  ))}
+                </select>
+                {savingDce && (
+                  <span className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
+                    Salvataggio…
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="card p-5 lg:col-span-2">
             <div className="text-sm font-semibold mb-3">Voci</div>
             {items.length === 0 ? (

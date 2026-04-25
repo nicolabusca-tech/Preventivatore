@@ -26,6 +26,8 @@ type Product = {
   diagnosiPeso: number;
 };
 
+const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
+
 const blockLabels: Record<string, string> = {
   FRONTEND: "Front-end",
   "01": "Blocco 01 — Posizionamento",
@@ -105,6 +107,7 @@ export default function NuovoPreventivoPage() {
   const [roiInputs, setRoiInputs] = useState<RoiFormInputs>(() => mergeRoiDefaults(null));
 
   const [selected, setSelected] = useState<Map<string, number>>(new Map());
+  const [dceProductId, setDceProductId] = useState<string>("");
 
   const [scontoCrmAnnuale, setScontoCrmAnnuale] = useState(true);
   const [scontoAiVocaleAnnuale, setScontoAiVocaleAnnuale] = useState(false);
@@ -162,12 +165,21 @@ export default function NuovoPreventivoPage() {
     return map;
   }, [products]);
 
+  const dceOptions = useMemo(() => {
+    return products
+      .filter((p) => DCE_ALLOWED_CODES.includes(p.code as any))
+      .sort((a, b) => a.price - b.price);
+  }, [products]);
+
   const totals = useMemo(() => {
     let setup = 0;
     let monthly = 0;
     let crmMonthly = 0;
     let aiMonthly = 0;
     let waMonthly = 0;
+
+    const dce = dceOptions.find((p) => p.id === dceProductId);
+    if (dce) monthly += dce.price;
 
     for (const [code, qty] of selected.entries()) {
       const p = products.find((x) => x.code === code);
@@ -209,16 +221,34 @@ export default function NuovoPreventivoPage() {
       prepaidAi,
       prepaidWa,
     };
-  }, [products, selected, scontoAiVocaleAnnuale, scontoCrmAnnuale, scontoWaAnnuale]);
+  }, [
+    products,
+    selected,
+    dceOptions,
+    dceProductId,
+    scontoAiVocaleAnnuale,
+    scontoCrmAnnuale,
+    scontoWaAnnuale,
+  ]);
 
   const roiLive = useMemo(() => {
-    const selectedForRoi = Array.from(selected.entries())
-      .map(([code, quantity]) => {
-        const p = products.find((x) => x.code === code);
-        if (!p) return null;
-        return { productCode: p.code, quantity, price: p.price, isMonthly: p.isMonthly };
-      })
-      .filter(Boolean) as { productCode: string; quantity: number; price: number; isMonthly: boolean }[];
+    const selectedForRoi = [
+      ...(dceProductId
+        ? (() => {
+            const dce = dceOptions.find((p) => p.id === dceProductId);
+            return dce
+              ? [{ productCode: dce.code, quantity: 1, price: dce.price, isMonthly: true }]
+              : [];
+          })()
+        : []),
+      ...Array.from(selected.entries())
+        .map(([code, quantity]) => {
+          const p = products.find((x) => x.code === code);
+          if (!p) return null;
+          return { productCode: p.code, quantity, price: p.price, isMonthly: p.isMonthly };
+        })
+        .filter(Boolean),
+    ] as { productCode: string; quantity: number; price: number; isMonthly: boolean }[];
 
     const byCode = new Map<string, { diagnosiPeso: number; isMonthly: boolean }>(
       products.map((p) => [p.code, { diagnosiPeso: p.diagnosiPeso || 0, isMonthly: p.isMonthly }])
@@ -231,7 +261,7 @@ export default function NuovoPreventivoPage() {
       totals.monthlyAfterPrepay,
       diagnosiShareValue
     );
-  }, [products, roiInputs, selected, totals.monthlyAfterPrepay, totals.oneTimeTotal]);
+  }, [products, roiInputs, selected, totals.monthlyAfterPrepay, totals.oneTimeTotal, dceOptions, dceProductId]);
 
   function toggleProduct(code: string) {
     setSelected((prev) => {
@@ -272,6 +302,10 @@ export default function NuovoPreventivoPage() {
   async function handleSubmit() {
     if (!clientName.trim()) {
       setError("Il nome del cliente è obbligatorio.");
+      return;
+    }
+    if (!dceProductId) {
+      setError("Seleziona prima il livello DCE: senza regia il sistema non parte.");
       return;
     }
     if (selected.size === 0) {
@@ -323,9 +357,12 @@ export default function NuovoPreventivoPage() {
         roiMargineCommessa: roiInputs.margineCommessa,
         roiSnapshot: roiLive.snapshot,
         items,
+        dceProductId,
         notes: notes.trim() || null,
         expiresAt,
-        totalSetup: totals.oneTimeTotal,
+        // `totalSetup` deve rappresentare SOLO il setup sistema (una tantum).
+        // Le eventuali una-tantum aggiuntive (es. canoni anticipati) vanno nel totale annuo.
+        totalSetup: totals.setup,
         totalMonthly: totals.monthlyAfterPrepay,
         totalAnnual: totals.annualTotal,
         setupBeforeDiscount: totals.setup,
@@ -619,8 +656,33 @@ export default function NuovoPreventivoPage() {
           <div className="card p-5 sm:p-6">
             <h2 className="text-2xl mb-4">Componi l&apos;offerta</h2>
 
+            <div
+              className="mb-5 p-4 rounded-lg"
+              style={{ background: "var(--mc-bg-inset)", border: "1px solid var(--mc-border)" }}
+            >
+              <div className="label">
+                Direzione mensile (DCE) <span style={{ color: "var(--mc-accent)" }}>*</span>
+              </div>
+              <select
+                className="input"
+                value={dceProductId}
+                onChange={(e) => setDceProductId(e.target.value)}
+              >
+                <option value="">Seleziona livello DCE…</option>
+                {dceOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} — {formatEuro(p.price)}/mese
+                  </option>
+                ))}
+              </select>
+              <p className="helper-text">
+                Senza regia il sistema non parte: il salvataggio resta bloccato finché non selezioni il livello.
+              </p>
+            </div>
+
             <div className="space-y-2.5">
               {blockOrder.map((block) => {
+                if (block === "DCE") return null;
                 const list = productsByBlock.get(block) || [];
                 if (list.length === 0) return null;
                 const isExpanded = expandedBlocks.has(block);
@@ -961,7 +1023,7 @@ export default function NuovoPreventivoPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={saving || selected.size === 0}
+              disabled={saving || selected.size === 0 || !dceProductId}
               className="btn-primary w-full"
             >
               {saving ? "Salvataggio..." : "Salva preventivo"}

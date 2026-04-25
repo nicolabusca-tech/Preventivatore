@@ -10,6 +10,8 @@ import {
 } from "./helpers";
 import { generateStyles } from "./styles";
 
+const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
+
 type QuoteWithRelations = Quote & {
   items: QuoteItem[];
   user: Pick<User, "name" | "email">;
@@ -523,7 +525,23 @@ function renderPage5(quote: QuoteWithRelations) {
 }
 
 function renderPage6(quote: QuoteWithRelations) {
-  const primoAnnoCompleto = quote.totalSetup + quote.totalMonthly * 12;
+  const primoAnnoCompleto =
+    typeof quote.totalAnnual === "number" && quote.totalAnnual > 0
+      ? quote.totalAnnual
+      : quote.totalSetup + quote.totalMonthly * 12;
+
+  const dceMonthly = quote.items
+    .filter((i) => i.isMonthly && DCE_ALLOWED_CODES.includes(i.productCode as any))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+
+  const crmMonthlyFromItems = quote.items
+    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_CRM"))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+  const hasCrmAnnualPrepay = !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0;
+  const crmAnnualFull = hasCrmAnnualPrepay ? crmMonthlyFromItems * 12 : 0;
+  const crmAnnualDiscount = hasCrmAnnualPrepay ? Math.round(crmAnnualFull * 0.2) : 0;
+  const crmAnnualNet = hasCrmAnnualPrepay ? crmAnnualFull - crmAnnualDiscount : 0;
+
   const creditoAcceleratori = Math.round(quote.totalSetup * 0.1);
   const direttoreCosto = escapeHtml(formatEuro(primoAnnoCompleto));
   const stripeSetupSconto = Math.round(quote.totalSetup * 0.97);
@@ -538,6 +556,11 @@ function renderPage6(quote: QuoteWithRelations) {
     <div class="no-break box box-black">
       <table style="border-collapse:collapse">
         <tbody>
+          <tr>
+            <td colspan="2" style="border-bottom:none;padding-bottom:3mm">
+              <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">SETUP UNA TANTUM</div>
+            </td>
+          </tr>
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Setup sistema · una tantum</td>
             <td class="right" style="border-bottom:none"><span style="font-size:18pt">${escapeHtml(
@@ -568,23 +591,65 @@ function renderPage6(quote: QuoteWithRelations) {
           `
               : ""
           }
-          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18)"></td></tr>
+          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18);padding-top:2mm"></td></tr>
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale setup</td>
             <td class="right" style="border-bottom:none"><span class="display" style="font-style:italic;font-size:24pt;color:var(--mc-orange)">${escapeHtml(
               formatEuro(quote.totalSetup)
             )}</span></td>
           </tr>
-          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18)"></td></tr>
+          <tr><td colspan="2" style="border-bottom:none;height:4mm"></td></tr>
+
+          <tr>
+            <td colspan="2" style="border-bottom:none;padding-bottom:2mm">
+              <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">DIREZIONE MENSILE</div>
+            </td>
+          </tr>
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Direzione mensile</td>
             <td class="right" style="border-bottom:none"><span style="font-size:16pt">${escapeHtml(
-              formatEuro(quote.totalMonthly)
+              formatEuro(dceMonthly)
             )} / mese</span></td>
           </tr>
-          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18)"></td></tr>
+          ${
+            hasCrmAnnualPrepay
+              ? `
+          <tr><td colspan="2" style="border-bottom:none;height:5mm"></td></tr>
           <tr>
-            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Primo anno completo</td>
+            <td colspan="2" style="border-bottom:none;padding-bottom:2mm">
+              <div class="caps" style="font-size:8pt;font-weight:800;letter-spacing:0.14em;color:#2D7A3E">
+                HAI SCELTO IL PAGAMENTO ANNUALE ANTICIPATO DEL CANONE CRM
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Canone CRM annuale (12 mesi anticipati)</td>
+            <td class="right" style="border-bottom:none;color:rgba(250,248,244,0.9)"><b>${escapeHtml(
+              formatEuro(crmAnnualFull)
+            )}</b></td>
+          </tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Sconto pagamento anticipato 20%</td>
+            <td class="right" style="border-bottom:none;color:var(--mc-orange)"><b>- ${escapeHtml(
+              formatEuro(crmAnnualDiscount)
+            )}</b></td>
+          </tr>
+          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18);padding-top:2mm"></td></tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale canone annuale anticipato</td>
+            <td class="right" style="border-bottom:none;color:rgba(250,248,244,0.95)"><b>${escapeHtml(
+              formatEuro(crmAnnualNet)
+            )}</b></td>
+          </tr>
+          `
+              : ""
+          }
+
+          <tr><td colspan="2" style="border-bottom:none;height:5mm"></td></tr>
+          <tr><td colspan="2" style="border-bottom:2.5pt solid rgba(250,248,244,0.35)"></td></tr>
+          <tr><td colspan="2" style="border-bottom:none;height:3mm"></td></tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75);text-transform:uppercase;letter-spacing:0.14em;font-size:9pt"><b>Primo anno completo</b></td>
             <td class="right" style="border-bottom:none"><span class="display" style="font-style:italic;font-size:28pt;color:var(--mc-orange)">${escapeHtml(
               formatEuro(primoAnnoCompleto)
             )}</span></td>

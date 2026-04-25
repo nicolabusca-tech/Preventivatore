@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
@@ -31,6 +33,7 @@ export async function POST(req: Request) {
     scontoAiVocaleAnnuale,
     scontoWaAnnuale,
     items,
+    dceProductId,
     notes,
     expiresAt,
     totalSetup,
@@ -49,6 +52,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Dati mancanti" }, { status: 400 });
   }
 
+  if (!dceProductId || typeof dceProductId !== "string") {
+    return NextResponse.json(
+      {
+        error:
+          "Seleziona prima il livello DCE: senza regia il sistema non parte.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const dceProduct = await prisma.product.findUnique({
+    where: { id: dceProductId },
+    select: { id: true, code: true, name: true, price: true, isMonthly: true },
+  });
+
+  if (!dceProduct || !DCE_ALLOWED_CODES.includes(dceProduct.code as any) || !dceProduct.isMonthly) {
+    return NextResponse.json(
+      { error: "Livello DCE non valido. Seleziona DCE_BASE, DCE_STRUTTURATO o DCE_ENTERPRISE." },
+      { status: 400 }
+    );
+  }
+
   const count = await prisma.quote.count();
   const year = new Date().getFullYear();
   const quoteNumber = `Q${year}-${String(count + 1).padStart(4, "0")}`;
@@ -56,10 +81,33 @@ export async function POST(req: Request) {
   const defaultExpiry = new Date();
   defaultExpiry.setDate(defaultExpiry.getDate() + 30);
 
+  // Enforce: una sola DCE, e deve essere quella selezionata da Product (no prezzi liberi)
+  const itemsWithoutDce = Array.isArray(items)
+    ? items.filter(
+        (it: any) =>
+          !it ||
+          typeof it.productCode !== "string" ||
+          !DCE_ALLOWED_CODES.some((c) => it.productCode === c || it.productCode.startsWith("DCE"))
+      )
+    : [];
+
+  const finalItems = [
+    ...itemsWithoutDce,
+    {
+      productCode: dceProduct.code,
+      productName: dceProduct.name,
+      price: dceProduct.price,
+      quantity: 1,
+      isMonthly: true,
+      notes: null,
+    },
+  ];
+
   const quote = await prisma.quote.create({
     data: {
       quoteNumber,
       userId: session.user.id,
+      dceProductId: dceProduct.id,
       clientName,
       clientCompany,
       clientEmail,
@@ -94,7 +142,7 @@ export async function POST(req: Request) {
       scontoCrmAnnuale: scontoCrmAnnuale ?? false,
       voucherAuditApplied: voucherAuditApplied || false,
       items: {
-        create: items.map((item: any) => ({
+        create: finalItems.map((item: any) => ({
           productCode: item.productCode,
           productName: item.productName,
           price: item.price,

@@ -55,6 +55,24 @@ export const ANNUAL_DISCOUNT_PERCENT: Record<CanoneCategory, number> = {
   WA: 15,
 };
 
+/**
+ * Incasso anticipato: canone mensile del listino scelto × 12, poi sconto % **solo** su quell'importo.
+ * Coerente con PDF (arretrato: sconto = round(annuo × p/100), netto = annuo − sconto).
+ */
+export function canonePrepayFromMonthly(
+  monthlyAmount: number,
+  category: CanoneCategory
+): { fullAnnual: number; discountAmount: number; netOneTime: number } {
+  if (monthlyAmount <= 0) {
+    return { fullAnnual: 0, discountAmount: 0, netOneTime: 0 };
+  }
+  const pct = ANNUAL_DISCOUNT_PERCENT[category];
+  const fullAnnual = monthlyAmount * 12;
+  const discountAmount = Math.round((fullAnnual * pct) / 100);
+  const netOneTime = fullAnnual - discountAmount;
+  return { fullAnnual, discountAmount, netOneTime };
+}
+
 // Mappa block -> categoria canone
 export function blockToCanoneCategory(block: string): CanoneCategory | null {
   if (block === "CANONI_CRM") return "CRM";
@@ -127,8 +145,20 @@ export function prossimoScontoVolume(
 export function applicaCodiceManuale(
   setupTotal: number,
   percent: number,
-  code: string
+  code: string,
+  opts?: { fixedAmount?: number }
 ): DiscountResult {
+  const fixed = opts?.fixedAmount;
+  if (fixed != null && fixed > 0) {
+    const amount = Math.min(Math.round(fixed), Math.max(0, setupTotal));
+    return {
+      type: "manual",
+      amount,
+      percent: 0,
+      label: `Codice ${code} (−${amount} €)`,
+    };
+  }
+
   const amount = Math.round(setupTotal * (percent / 100));
   return {
     type: "manual",
@@ -349,12 +379,8 @@ export function calcolaTotali(
     monthly: number,
     cat: CanoneCategory
   ): { prepayment: number; risparmio: number } => {
-    if (monthly === 0) return { prepayment: 0, risparmio: 0 };
-    const fullAnnual = monthly * 12;
-    const sconto = ANNUAL_DISCOUNT_PERCENT[cat];
-    const prepayment = Math.round(fullAnnual * (1 - sconto / 100));
-    const risparmio = fullAnnual - prepayment;
-    return { prepayment, risparmio };
+    const d = canonePrepayFromMonthly(monthly, cat);
+    return { prepayment: d.netOneTime, risparmio: d.discountAmount };
   };
 
   const crmCalc = annualPrepayments.CRM

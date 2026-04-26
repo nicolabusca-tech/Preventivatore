@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
+const AUDIT_LAMPO_CODE = "AUDIT_LAMPO";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -54,26 +55,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Dati mancanti" }, { status: 400 });
   }
 
-  if (!dceProductId || typeof dceProductId !== "string") {
-    return NextResponse.json(
-      {
-        error:
-          "Seleziona prima il livello DCE: senza regia il sistema non parte.",
-      },
-      { status: 400 }
-    );
-  }
+  const wantsDce = typeof dceProductId === "string" && dceProductId.length > 0;
 
-  const dceProduct = await prisma.product.findUnique({
-    where: { id: dceProductId },
-    select: { id: true, code: true, name: true, price: true, isMonthly: true },
-  });
-
-  if (!dceProduct || !DCE_ALLOWED_CODES.includes(dceProduct.code as any) || !dceProduct.isMonthly) {
-    return NextResponse.json(
-      { error: "Livello DCE non valido. Seleziona DCE_BASE, DCE_STRUTTURATO o DCE_ENTERPRISE." },
-      { status: 400 }
-    );
+  let dceProduct: { id: string; code: string; name: string; price: number; isMonthly: boolean } | null =
+    null;
+  if (wantsDce) {
+    const p = await prisma.product.findUnique({
+      where: { id: dceProductId },
+      select: { id: true, code: true, name: true, price: true, isMonthly: true },
+    });
+    if (!p || !DCE_ALLOWED_CODES.includes(p.code as any) || !p.isMonthly) {
+      return NextResponse.json(
+        { error: "Livello DCE non valido. Seleziona DCE_BASE, DCE_STRUTTURATO o DCE_ENTERPRISE." },
+        { status: 400 }
+      );
+    }
+    dceProduct = p;
   }
 
   const count = await prisma.quote.count();
@@ -96,49 +93,35 @@ export async function POST(req: Request) {
     : [];
 
   const itemsWithoutDiagnosi = itemsWithoutDce.filter(
-    (it: any) => !it || typeof it.productCode !== "string" || it.productCode !== DIAGNOSI_CODE
+    (it: any) =>
+      !it ||
+      typeof it.productCode !== "string" ||
+      (it.productCode !== DIAGNOSI_CODE && it.productCode !== AUDIT_LAMPO_CODE)
   );
 
-  const diagnosiItem = !diagnosiPaid
-    ? await prisma.product.findUnique({
-        where: { code: DIAGNOSI_CODE },
-        select: { code: true, name: true, price: true, isMonthly: true },
-      })
-    : null;
-
-  if (!diagnosiPaid && (!diagnosiItem || diagnosiItem.isMonthly)) {
-    return NextResponse.json({ error: "Prodotto Diagnosi Strategica non valido a listino." }, { status: 400 });
-  }
-
+  // Nessuna riga "Diagnosi" aggiunta in automatico se non è nei items: in UI la diagnosi a fini
+  // addebito andrebbe scelta in listino; il credito (già versata) passa da diagnosiGiaPagata.
   const finalItems = [
     ...itemsWithoutDiagnosi,
-    ...(diagnosiPaid
-      ? []
-      : [
+    ...(dceProduct
+      ? [
           {
-            productCode: diagnosiItem!.code,
-            productName: diagnosiItem!.name,
-            price: diagnosiItem!.price,
+            productCode: dceProduct.code,
+            productName: dceProduct.name,
+            price: dceProduct.price,
             quantity: 1,
-            isMonthly: false,
+            isMonthly: true,
             notes: null,
           },
-        ]),
-    {
-      productCode: dceProduct.code,
-      productName: dceProduct.name,
-      price: dceProduct.price,
-      quantity: 1,
-      isMonthly: true,
-      notes: null,
-    },
+        ]
+      : []),
   ];
 
   const quote = await prisma.quote.create({
     data: {
       quoteNumber,
       userId: session.user.id,
-      dceProductId: dceProduct.id,
+      dceProductId: dceProduct ? dceProduct.id : null,
       clientName,
       clientCompany,
       clientEmail,

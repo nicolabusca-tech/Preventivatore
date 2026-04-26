@@ -1,0 +1,11 @@
+---
+description: Unica cartella di lavoro e avvio app (niente copia in ~/dev)
+alwaysApply: true
+---
+
+# Cartella del progetto
+
+- Sviluppa e lancia l’app **solo** dalla cartella aperta in Cursor, ovvero la root del repository **preventivatore** (es. `.../Desktop/preventivatore`), salvo path diversa scelta di proposito dall’utente.
+- **Non** usare e **non** ricreare una seconda copia in `~/dev/preventivatore` (era solo uno specchio rsync, ora rimosso dal repo).
+- Per avviare: dalla root del repo esegui `npm run dev` (di solito `http://localhost:3000`).
+- Se in passato hai usato un terminale sotto `~/dev/preventivatore`, chiudilo; il codice sorgente da modificare e da cui far partire Next è quello sotto `Desktop/.../preventivatore` (o il clone che hai aperto in Cursor).

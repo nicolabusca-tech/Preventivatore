@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node node_modules/next/dist/bin/next dev",
+    "dev:poll": "CHOKIDAR_USEPOLLING=1 WATCHPACK_POLLING=true node node_modules/next/dist/bin/next dev",
     "build": "prisma generate && node node_modules/next/dist/bin/next build",
     "start": "node node_modules/next/dist/bin/next start",
     "postinstall": "prisma generate",

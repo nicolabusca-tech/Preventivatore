@@ -1,45 +1,77 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
+import { parseRoiSnapshot } from "@/lib/roi";
 
-type Product = {
-  id: string;
-  code: string;
-  name: string;
-  price: number;
-  isMonthly: boolean;
-};
-
-type QuoteItem = {
-  id: string;
-  // Supporta sia il vecchio shape UI che lo shape Prisma (QuoteItem)
-  name?: string;
-  productName?: string;
-  productCode?: string;
-  quantity: number;
-  // vecchi campi (se presenti)
-  priceSetup?: number;
-  priceMonthly?: number;
-  // campi Prisma
-  price?: number;
-  isMonthly: boolean;
-};
+const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
+const DIAGNOSI_VOUCHER_AMOUNT = 497;
+const AUDIT_VOUCHER_AMOUNT = 147;
 
 type QuoteDetail = {
   id: string;
   quoteNumber: string;
   clientName: string;
   clientCompany: string | null;
-  dceProductId?: string | null;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  clientNotes: string | null;
+  clientAddress: string | null;
+  clientPostalCode: string | null;
+  clientCity: string | null;
+  clientProvince: string | null;
+  clientVat: string | null;
+  clientSdi: string | null;
+  crmCustomerId: string | null;
+  originCliente: string | null;
+  estrattoDiagnosi: string | null;
+  diagnosiGiaPagata: boolean;
+  roiPreventiviMese: number | null;
+  roiImportoMedio: number | null;
+  roiConversioneAttuale: number | null;
+  roiMargineCommessa: number | null;
+  roiSnapshot: string | null;
+  notes: string | null;
   totalSetup: number;
   totalMonthly: number;
   totalAnnual: number;
-  items: QuoteItem[];
+  setupBeforeDiscount: number;
+  discountType: string | null;
+  discountAmount: number;
+  discountCode: string | null;
+  discountPercent: number;
+  scontoCrmAnnuale: boolean;
+  scontoAiVocaleAnnuale: boolean;
+  scontoWaAnnuale: boolean;
+  voucherAuditApplied: boolean;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+  user: { name: string; email: string };
+  items: {
+    id: string;
+    productCode: string;
+    productName: string;
+    price: number;
+    quantity: number;
+    isMonthly: boolean;
+  }[];
 };
 
-const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
+const statusOptions = [
+  { value: "pending", label: "In attesa", class: "badge-pending" },
+  { value: "inviato", label: "Inviato al cliente", class: "badge-sent" },
+  { value: "accettato", label: "Accettato", class: "badge-accepted" },
+  { value: "rifiutato", label: "Rifiutato", class: "badge-rejected" },
+  { value: "scaduto", label: "Scaduto", class: "badge-expired" },
+];
+
+const discountTypeLabels: Record<string, string> = {
+  volume_5: "Sconto volume 5% (3+ moduli)",
+  volume_10: "Sconto volume 10% (5+ moduli)",
+  manual: "Codice sconto manuale",
+};
 
 function formatEuro(value: number) {
   return new Intl.NumberFormat("it-IT", {
@@ -50,46 +82,61 @@ function formatEuro(value: number) {
   }).format(value);
 }
 
-export default function PreventivoDettaglioPage() {
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("it-IT", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatDateTime(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("it-IT", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function buildFullAddress(q: QuoteDetail): string {
+  const parts: string[] = [];
+  if (q.clientAddress) parts.push(q.clientAddress);
+  const cityLine = [q.clientPostalCode, q.clientCity].filter(Boolean).join(" ");
+  if (cityLine) parts.push(cityLine);
+  if (q.clientProvince) parts.push(`(${q.clientProvince})`);
+  return parts.join(" — ");
+}
+
+export default function DettaglioPreventivoPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
-
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
-  const [dceOptions, setDceOptions] = useState<Product[]>([]);
-  const [savingDce, setSavingDce] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     let alive = true;
-
     setLoading(true);
     setError(null);
 
-    Promise.all([fetch(`/api/quotes/${id}`), fetch("/api/products")])
-      .then(async ([quoteRes, productsRes]) => {
-        if (!quoteRes.ok) {
-          const body = await quoteRes.json().catch(() => null);
+    fetch(`/api/quotes/${id}`)
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
           const message =
             (body && typeof body.error === "string" && body.error) ||
-            `Errore caricamento preventivo (HTTP ${quoteRes.status})`;
+            `Errore caricamento preventivo (HTTP ${res.status})`;
           throw new Error(message);
         }
-        const quoteData = await quoteRes.json();
-        const productsData = await productsRes.json().catch(() => []);
-        return { quoteData, productsData };
+        return body as QuoteDetail;
       })
-      .then(({ quoteData, productsData }) => {
+      .then((data) => {
         if (!alive) return;
-        setQuote(quoteData);
-        const opts: Product[] = Array.isArray(productsData) ? productsData : [];
-        setDceOptions(
-          opts
-            .filter((p) => DCE_ALLOWED_CODES.includes((p as any).code))
-            .filter((p) => (p as any).isMonthly)
-            .sort((a, b) => (a.price || 0) - (b.price || 0))
-        );
+        setQuote(data);
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -106,200 +153,618 @@ export default function PreventivoDettaglioPage() {
     };
   }, [id]);
 
-  const items = useMemo(() => quote?.items ?? [], [quote]);
-  const canExportPdf = !!id && !loading && !!quote?.dceProductId;
-
-  const rows = useMemo(() => {
-    return items.map((it) => {
-      const quantity = Number.isFinite(it.quantity) ? it.quantity : 1;
-      const unitPrice = typeof it.price === "number" ? it.price : 0;
-
-      const setupAmount =
-        typeof it.priceSetup === "number"
-          ? it.priceSetup
-          : it.isMonthly
-            ? 0
-            : unitPrice * quantity;
-
-      const monthlyAmount =
-        typeof it.priceMonthly === "number"
-          ? it.priceMonthly
-          : it.isMonthly
-            ? unitPrice * quantity
-            : 0;
-
-      return {
-        id: it.id,
-        name: it.name ?? it.productName ?? "Voce",
-        quantity,
-        isMonthly: it.isMonthly,
-        setupAmount,
-        monthlyAmount,
-      };
+  async function updateStatus(newStatus: string) {
+    if (!quote) return;
+    setUpdating(true);
+    const res = await fetch(`/api/quotes/${quote.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
     });
-  }, [items]);
+    if (res.ok) {
+      const updated = (await res.json()) as QuoteDetail;
+      setQuote(updated);
+    }
+    setUpdating(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center" style={{ color: "var(--mc-text-muted)" }}>
+        <div className="inline-flex items-center gap-2">
+          <svg
+            className="animate-spin"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            aria-hidden="true"
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+          <span className="text-sm">Caricamento preventivo...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="py-20 text-center max-w-md mx-auto">
+        <p className="text-sm mb-4" style={{ color: "var(--mc-danger, #b91c1c)" }}>
+          {error}
+        </p>
+        <Link href="/preventivi" className="btn-secondary">
+          Torna ai preventivi
+        </Link>
+      </div>
+    );
+  }
+
+  if (!quote) {
+    return (
+      <div className="py-20 text-center">
+        <p className="text-sm mb-4" style={{ color: "var(--mc-text-muted)" }}>
+          Preventivo non trovato.
+        </p>
+        <Link href="/preventivi" className="btn-secondary">
+          Torna ai preventivi
+        </Link>
+      </div>
+    );
+  }
+
+  const setupLineItems = quote.items.filter(
+    (i) =>
+      !i.isMonthly && !(quote.diagnosiGiaPagata && i.productCode === DIAGNOSI_CODE)
+  );
+  const monthlyItems = quote.items.filter((i) => i.isMonthly);
+  const currentStatus = statusOptions.find((s) => s.value === quote.status);
+  const fullAddress = buildFullAddress(quote);
+  const roiSnap = parseRoiSnapshot(quote.roiSnapshot);
+  const showSetupSection = setupLineItems.length > 0 || quote.diagnosiGiaPagata;
 
   return (
     <div className="animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
-        <div>
-          <div className="text-sm font-mono" style={{ color: "var(--mc-text-muted)" }}>
-            {quote?.quoteNumber ?? "Preventivo"}
-          </div>
-          <h1 className="text-3xl mb-1">
-            {quote?.clientName ?? (loading ? "Caricamento..." : "Preventivo")}
-          </h1>
-          {quote?.clientCompany && (
-            <div className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
-              {quote.clientCompany}
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/preventivi" className="btn-ghost">
-            ← Indietro
-          </Link>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              if (!id) return;
-              window.open(`/api/quotes/${id}/pdf`, "_blank", "noopener,noreferrer");
-            }}
-            disabled={!canExportPdf}
-            title={
-              !quote?.dceProductId
-                ? "Seleziona prima il livello DCE: senza regia il sistema non parte."
-                : undefined
-            }
+      {/* Breadcrumb + header */}
+      <div className="mb-6">
+        <Link
+          href="/preventivi"
+          className="inline-flex items-center gap-1 text-xs font-semibold mb-3 hover:underline"
+          style={{ color: "var(--mc-text-secondary)" }}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            aria-hidden="true"
           >
-            Stampa / PDF
-          </button>
-        </div>
-      </div>
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          Torna ai preventivi
+        </Link>
 
-      {loading ? (
-        <div className="card p-8 text-sm" style={{ color: "var(--mc-text-muted)" }}>
-          Caricamento preventivo…
-        </div>
-      ) : error ? (
-        <div className="card p-8">
-          <div className="text-sm font-semibold" style={{ color: "var(--mc-danger)" }}>
-            {error}
-          </div>
-        </div>
-      ) : !quote ? (
-        <div className="card p-8 text-sm" style={{ color: "var(--mc-text-muted)" }}>
-          Preventivo non trovato.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {!quote.dceProductId && (
-            <div className="card p-5 lg:col-span-3">
-              <div className="text-sm font-semibold mb-2">Preventivo incompleto</div>
-              <div className="text-sm" style={{ color: "var(--mc-text-secondary)" }}>
-                Seleziona prima il livello DCE: senza regia il sistema non parte.
-              </div>
-              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
-                <select
-                  className="input"
-                  value={quote.dceProductId ?? ""}
-                  onChange={async (e) => {
-                    if (!id) return;
-                    const nextId = e.target.value;
-                    if (!nextId) return;
-                    setSavingDce(true);
-                    setError(null);
-                    try {
-                      const res = await fetch(`/api/quotes/${id}`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ dceProductId: nextId }),
-                      });
-                      const body = await res.json().catch(() => ({}));
-                      if (!res.ok) throw new Error(body?.error || "Errore aggiornamento DCE");
-                      setQuote(body);
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Errore aggiornamento DCE");
-                    } finally {
-                      setSavingDce(false);
-                    }
-                  }}
-                  disabled={savingDce || dceOptions.length === 0}
-                >
-                  <option value="">Seleziona livello DCE…</option>
-                  {dceOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — {formatEuro(p.price)}/mese
-                    </option>
-                  ))}
-                </select>
-                {savingDce && (
-                  <span className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
-                    Salvataggio…
-                  </span>
-                )}
-              </div>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <div
+              className="font-mono text-xs mb-1 font-bold tracking-wider"
+              style={{ color: "var(--mc-accent)" }}
+            >
+              {quote.quoteNumber}
             </div>
-          )}
-
-          <div className="card p-5 lg:col-span-2">
-            <div className="text-sm font-semibold mb-3">Voci</div>
-            {items.length === 0 ? (
-              <div className="text-sm" style={{ color: "var(--mc-text-muted)" }}>
-                Nessuna voce.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="mc-table">
-                  <thead>
-                    <tr>
-                      <th>Voce</th>
-                      <th className="text-right">Q.tà</th>
-                      <th className="text-right">Setup</th>
-                      <th className="text-right">Canone</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((it) => (
-                      <tr key={it.id}>
-                        <td className="font-semibold">{it.name}</td>
-                        <td className="text-right tabular-nums">{it.quantity}</td>
-                        <td className="text-right tabular-nums">{formatEuro(it.setupAmount)}</td>
-                        <td className="text-right tabular-nums">
-                          {it.isMonthly ? `${formatEuro(it.monthlyAmount)}/m` : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <h1 className="text-4xl mb-1">{quote.clientName}</h1>
+            {quote.clientCompany && (
+              <div
+                className="text-base italic"
+                style={{ color: "var(--mc-text-secondary)" }}
+              >
+                {quote.clientCompany}
               </div>
             )}
           </div>
 
-          <div className="card p-5">
-            <div className="text-sm font-semibold mb-3">Totali</div>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span style={{ color: "var(--mc-text-secondary)" }}>Setup</span>
-              <span className="font-semibold tabular-nums">{formatEuro(quote.totalSetup)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span style={{ color: "var(--mc-text-secondary)" }}>Canoni</span>
-              <span className="font-semibold tabular-nums">
-                {quote.totalMonthly > 0 ? `${formatEuro(quote.totalMonthly)}/m` : "—"}
+          <div className="flex items-center gap-2">
+            {currentStatus && (
+              <span className={`badge ${currentStatus.class} text-sm px-3 py-1.5`}>
+                <span className="badge-dot" />
+                {currentStatus.label}
               </span>
-            </div>
-            <div
-              className="flex items-center justify-between text-sm pt-3 mt-3"
-              style={{ borderTop: "1px solid var(--mc-border)" }}
+            )}
+            <a
+              href={`/api/quotes/${quote.id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary text-sm"
             >
-              <span style={{ color: "var(--mc-text-secondary)" }}>Primo anno</span>
-              <span className="text-lg font-semibold tabular-nums">{formatEuro(quote.totalAnnual)}</span>
+              Scarica PDF Piano Operativo
+            </a>
+          </div>
+        </div>
+
+        <div
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4 text-xs"
+          style={{ color: "var(--mc-text-muted)" }}
+        >
+          <span>Creato da {quote.user.name}</span>
+          <span>·</span>
+          <span>{formatDateTime(quote.createdAt)}</span>
+          {quote.crmCustomerId && (
+            <>
+              <span>·</span>
+              <span className="font-mono">CRM #{quote.crmCustomerId}</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Colonna sinistra */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Dati cliente */}
+          <div className="card p-5 sm:p-6">
+            <h2 className="text-2xl mb-4">Cliente</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+              <div>
+                <div className="label">Nome referente</div>
+                <div className="text-sm font-medium">{quote.clientName}</div>
+              </div>
+              {quote.clientCompany && (
+                <div>
+                  <div className="label">Ragione sociale</div>
+                  <div className="text-sm font-medium">{quote.clientCompany}</div>
+                </div>
+              )}
+              {quote.clientEmail && (
+                <div>
+                  <div className="label">Email</div>
+                  <div className="text-sm font-medium">
+                    <a
+                      href={`mailto:${quote.clientEmail}`}
+                      className="hover:underline"
+                      style={{ color: "var(--mc-accent)" }}
+                    >
+                      {quote.clientEmail}
+                    </a>
+                  </div>
+                </div>
+              )}
+              {quote.clientPhone && (
+                <div>
+                  <div className="label">Telefono</div>
+                  <div className="text-sm font-medium">
+                    <a
+                      href={`tel:${quote.clientPhone}`}
+                      className="hover:underline"
+                      style={{ color: "var(--mc-accent)" }}
+                    >
+                      {quote.clientPhone}
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {fullAddress && (
+                <div className="sm:col-span-2">
+                  <div className="label">Indirizzo</div>
+                  <div className="text-sm font-medium">{fullAddress}</div>
+                </div>
+              )}
+
+              {quote.clientVat && (
+                <div>
+                  <div className="label">Partita IVA</div>
+                  <div className="text-sm font-medium font-mono">
+                    {quote.clientVat}
+                  </div>
+                </div>
+              )}
+              {quote.clientSdi && (
+                <div>
+                  <div className="label">Codice SDI</div>
+                  <div className="text-sm font-medium font-mono">
+                    {quote.clientSdi}
+                  </div>
+                </div>
+              )}
+              {quote.clientNotes && (
+                <div className="sm:col-span-2">
+                  <div className="label">Note cliente</div>
+                  <div className="text-sm whitespace-pre-wrap">
+                    {quote.clientNotes}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {(quote.originCliente ||
+            quote.estrattoDiagnosi ||
+            quote.roiPreventiviMese != null ||
+            roiSnap) && (
+            <div className="card p-5 sm:p-6">
+              <h2 className="text-2xl mb-4">Diagnosi &amp; ROI</h2>
+              {(quote.originCliente || quote.estrattoDiagnosi) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                  {quote.originCliente && (
+                    <div>
+                      <div className="label">Origine cliente</div>
+                      <div className="text-sm font-medium">{quote.originCliente}</div>
+                    </div>
+                  )}
+                  {quote.estrattoDiagnosi && (
+                    <div className="sm:col-span-2">
+                      <div className="label">Estratto diagnosi</div>
+                      <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                        {quote.estrattoDiagnosi}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div
+                className="text-xs font-bold uppercase tracking-wider mb-3"
+                style={{ color: "var(--mc-text-secondary)" }}
+              >
+                I numeri del cliente (alla creazione)
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <div className="label">Prev. / mese</div>
+                  <div className="font-medium tabular-nums">
+                    {roiSnap?.inputs.preventiviMese ?? quote.roiPreventiviMese ?? "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Importo medio €</div>
+                  <div className="font-medium tabular-nums">
+                    {roiSnap?.inputs.importoMedio ?? quote.roiImportoMedio ?? "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Conv. %</div>
+                  <div className="font-medium tabular-nums">
+                    {roiSnap?.inputs.conversioneAttuale ?? quote.roiConversioneAttuale ?? "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Margine %</div>
+                  <div className="font-medium tabular-nums">
+                    {roiSnap?.inputs.margineCommessa ?? quote.roiMargineCommessa ?? "—"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Voci preventivo */}
+          <div className="card p-5 sm:p-6">
+            <h2 className="text-2xl mb-5">Composizione offerta</h2>
+            <div className="space-y-6">
+              {showSetupSection && (
+                <div>
+                  <h3
+                    className="text-xs font-bold uppercase tracking-wider mb-3"
+                    style={{ color: "var(--mc-text-secondary)" }}
+                  >
+                    Setup una tantum
+                  </h3>
+                  <div className="space-y-1">
+                    {setupLineItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex justify-between items-start gap-3 py-2.5"
+                        style={{ borderBottom: "1px solid var(--mc-border)" }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm">
+                            {item.productName}
+                          </div>
+                          <div
+                            className="text-xs font-mono mt-0.5"
+                            style={{ color: "var(--mc-text-muted)" }}
+                          >
+                            {item.productCode}
+                            {item.quantity > 1 && ` · × ${item.quantity}`}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 font-semibold tabular-nums">
+                          {formatEuro(item.price * item.quantity)}
+                        </div>
+                      </div>
+                    ))}
+
+                    {quote.diagnosiGiaPagata && (
+                      <div
+                        className="flex justify-between items-start gap-3 py-2.5"
+                        style={{ borderBottom: "1px solid var(--mc-border)" }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className="font-semibold text-sm"
+                            style={{ color: "var(--mc-success)" }}
+                          >
+                            Diagnosi Strategica (già versata)
+                          </div>
+                        </div>
+                        <div
+                          className="text-right shrink-0 font-semibold tabular-nums"
+                          style={{ color: "var(--mc-success)" }}
+                        >
+                          −{formatEuro(DIAGNOSI_VOUCHER_AMOUNT)}
+                        </div>
+                      </div>
+                    )}
+
+                    <div
+                      className="pt-3 space-y-1.5 text-sm"
+                      style={{ borderTop: "1px solid var(--mc-border)" }}
+                    >
+                      <div className="flex justify-between">
+                        <span style={{ color: "var(--mc-text-secondary)" }}>
+                          Subtotale setup
+                        </span>
+                        <span className="font-semibold tabular-nums">
+                          {formatEuro(quote.setupBeforeDiscount || quote.totalSetup)}
+                        </span>
+                      </div>
+                      {quote.discountAmount > 0 && (
+                        <div
+                          className="flex justify-between"
+                          style={{ color: "var(--mc-success)" }}
+                        >
+                          <span className="text-xs">
+                            {quote.discountType &&
+                              (discountTypeLabels[quote.discountType] ||
+                                quote.discountType)}
+                            {quote.discountCode && ` · ${quote.discountCode}`}
+                            {quote.discountPercent > 0 && ` (−${quote.discountPercent}%)`}
+                            {quote.discountPercent <= 0 &&
+                              quote.discountAmount > 0 &&
+                              ` (−${formatEuro(quote.discountAmount)})`}
+                          </span>
+                          <span className="font-semibold text-xs tabular-nums">
+                            −{formatEuro(quote.discountAmount)}
+                          </span>
+                        </div>
+                      )}
+                      {quote.voucherAuditApplied && (
+                        <div
+                          className="flex justify-between"
+                          style={{ color: "var(--mc-success)" }}
+                        >
+                          <span className="text-xs">Voucher Audit Lampo</span>
+                          <span className="font-semibold text-xs tabular-nums">
+                            −{formatEuro(AUDIT_VOUCHER_AMOUNT)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {monthlyItems.length > 0 && (
+                <div>
+                  <h3
+                    className="text-xs font-bold uppercase tracking-wider mb-3"
+                    style={{ color: "var(--mc-text-secondary)" }}
+                  >
+                    Canoni mensili
+                  </h3>
+                  <div className="space-y-1">
+                    {monthlyItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex justify-between items-start gap-3 py-2.5"
+                        style={{ borderBottom: "1px solid var(--mc-border)" }}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm">
+                            {item.productName}
+                          </div>
+                          <div
+                            className="text-xs font-mono mt-0.5"
+                            style={{ color: "var(--mc-text-muted)" }}
+                          >
+                            {item.productCode}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 font-semibold tabular-nums">
+                          {formatEuro(item.price)}
+                          <span
+                            className="text-xs font-normal"
+                            style={{ color: "var(--mc-text-muted)" }}
+                          >
+                            /mese
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(quote.scontoCrmAnnuale ||
+                    quote.scontoAiVocaleAnnuale ||
+                    quote.scontoWaAnnuale) && (
+                    <div className="alert alert-success mt-3" style={{ fontSize: "0.75rem" }}>
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        className="flex-shrink-0 mt-0.5"
+                        aria-hidden="true"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>
+                        Pagamento annuale anticipato attivo per:{" "}
+                        {[
+                          quote.scontoCrmAnnuale && "CRM (−20%)",
+                          quote.scontoAiVocaleAnnuale && "AI Vocale (−15%)",
+                          quote.scontoWaAnnuale && "WhatsApp (−15%)",
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                        . L&apos;importo annuale è già incluso nel totale una tantum.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {quote.notes && (
+            <div className="card p-5 sm:p-6">
+              <h2 className="text-2xl mb-3">Note interne</h2>
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                {quote.notes}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-4">
+          <div className="card p-5">
+            <div className="label">Una tantum (alla firma)</div>
+            <div className="text-2xl font-bold tabular-nums mt-0.5">
+              {formatEuro(quote.totalSetup)}
+            </div>
+
+            {quote.totalMonthly > 0 && (
+              <>
+                <div className="label mt-4">Canoni mese per mese</div>
+                <div className="text-2xl font-bold tabular-nums mt-0.5">
+                  {formatEuro(quote.totalMonthly)}
+                  <span
+                    className="text-sm font-normal ml-1"
+                    style={{ color: "var(--mc-text-muted)" }}
+                  >
+                    /mese
+                  </span>
+                </div>
+              </>
+            )}
+
+            <div
+              className="pt-4 mt-4"
+              style={{ borderTop: "2px solid var(--mc-text)" }}
+            >
+              <div className="label">Totale primo anno</div>
+              <div
+                className="text-3xl font-bold tabular-nums mt-0.5"
+                style={{ color: "var(--mc-accent)", letterSpacing: "-0.02em" }}
+              >
+                {formatEuro(quote.totalAnnual)}
+              </div>
+              <div
+                className="text-xs mt-1"
+                style={{ color: "var(--mc-text-muted)" }}
+              >
+                IVA esclusa
+              </div>
+            </div>
+          </div>
+
+          {roiSnap && (
+            <div className="card p-5">
+              <h3
+                className="text-sm font-bold uppercase tracking-wider mb-3"
+                style={{ color: "var(--mc-accent)" }}
+              >
+                ROI (snapshot)
+              </h3>
+              <p className="text-xs mb-3" style={{ color: "var(--mc-text-muted)" }}>
+                Valori congelati al salvataggio: non cambiano se modifichi il listino ROI in admin.
+              </p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between gap-2">
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Margine annuo baseline</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatEuro(roiSnap.margineAnnuoBaseline)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Margine stimato proposta</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatEuro(roiSnap.margineStimatoProposta)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Valore quota diagnosi</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatEuro(roiSnap.valoreQuotaDiagnosi)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Indice</span>
+                  <span className="font-semibold tabular-nums">
+                    {roiSnap.indice != null ? roiSnap.indice.toFixed(2) : "—"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="card p-5">
+            <h3 className="text-sm font-bold uppercase tracking-wider mb-3">
+              Stato avanzamento
+            </h3>
+            <div className="space-y-1.5">
+              {statusOptions.map((opt) => {
+                const isCurrent = quote.status === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => updateStatus(opt.value)}
+                    disabled={updating || isCurrent}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2"
+                    style={{
+                      background: isCurrent
+                        ? "var(--mc-accent-soft)"
+                        : "var(--mc-bg-elevated)",
+                      border: `1px solid ${
+                        isCurrent ? "var(--mc-accent)" : "var(--mc-border)"
+                      }`,
+                      cursor: isCurrent ? "default" : "pointer",
+                      opacity: updating && !isCurrent ? 0.5 : 1,
+                    }}
+                  >
+                    <span className={`badge ${opt.class}`}>
+                      <span className="badge-dot" />
+                      {opt.label}
+                    </span>
+                    {isCurrent && (
+                      <span
+                        className="text-xs font-semibold ml-auto"
+                        style={{ color: "var(--mc-accent)" }}
+                      >
+                        attuale
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <div className="label">Scadenza preventivo</div>
+            <div className="font-semibold text-sm mt-1">
+              {formatDate(quote.expiresAt)}
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -33,6 +33,7 @@ export async function POST(req: Request) {
     valid: true,
     code: discount.code,
     discountPercent: discount.discountPercent,
+    discountAmount: discount.discountAmount,
     description: discount.description,
   });
 }

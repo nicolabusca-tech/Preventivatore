@@ -30,6 +30,14 @@ Questa versione **risolve i bug e aggiunge le funzionalità mancanti** segnalate
 
 ---
 
+## Cartella di lavoro (importante)
+
+Il repository va usato **in un’unica copia** sulla macchina: quella che apri in Cursor.  
+Avvia sempre `npm run dev` **da quella cartella**.  
+Lo script `npm run sync:dev` verso `~/dev/preventivatore` è stato **rimosso** per evitare di modificare un posto e vedere in browser un’altra copia.
+
+---
+
 ## Come applicare l'aggiornamento sul tuo Mac
 
 Hai già installato la v1.0. Per aggiornare alla v1.1, devi sostituire i file modificati e rilanciare il database.

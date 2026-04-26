@@ -13,6 +13,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const updates: any = {};
   if (data.active !== undefined) updates.active = data.active;
   if (data.discountPercent !== undefined) updates.discountPercent = parseInt(data.discountPercent);
+  if (data.discountAmount !== undefined) updates.discountAmount = parseInt(data.discountAmount);
   if (data.maxUses !== undefined) updates.maxUses = data.maxUses ? parseInt(data.maxUses) : null;
   if (data.expiresAt !== undefined)
     updates.expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;

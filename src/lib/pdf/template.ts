@@ -43,8 +43,13 @@ function computeSetupTotals(quote: QuoteWithRelations) {
   const voucherDiagnosi = quote.diagnosiGiaPagata ? DIAGNOSI_VOUCHER_AMOUNT : 0;
 
   const baseAfterVoucher = Math.max(0, setupBefore - voucherDiagnosi);
+  const storedDiscount = quote.discountAmount ?? 0;
   const discountAmount =
-    quote.discountPercent > 0 ? Math.round(baseAfterVoucher * (quote.discountPercent / 100)) : 0;
+    storedDiscount > 0
+      ? Math.min(storedDiscount, baseAfterVoucher)
+      : quote.discountPercent > 0
+        ? Math.round(baseAfterVoucher * (quote.discountPercent / 100))
+        : 0;
 
   let totalSetup = baseAfterVoucher - discountAmount;
   if (quote.voucherAuditApplied) totalSetup -= 147;
@@ -407,23 +412,16 @@ function renderPage5(quote: QuoteWithRelations) {
   let margineAttuale: number | null = null;
   let margineAtteso: number | null = null;
   let investimentoPrimoAnno: number | null = null;
+  let deltaPrimoAnno: number | null = null;
   let roi: number | null = null;
-  if (roiInputsOk) {
-    const preventiviAnnui = preventiviMese * 12;
-    const conversioneAttuale = conv / 100;
-    const contrattiAttuali = preventiviAnnui * conversioneAttuale;
-    const marginePerContratto = importoMedio * (marg / 100);
-    margineAttuale = contrattiAttuali * marginePerContratto;
-
-    const MOLTIPLICATORE_CONVERSIONE = 2.0; // TODO: rendere configurabile in B5.1 (admin RoiSettings)
-    const conversioneAttesa = conversioneAttuale * MOLTIPLICATORE_CONVERSIONE;
-    const contrattiAttesi = preventiviAnnui * conversioneAttesa;
-    margineAtteso = contrattiAttesi * marginePerContratto;
-
-    const setupTotals = computeSetupTotals(quote);
-    investimentoPrimoAnno = Math.max(0, setupTotals.totalSetup + quote.totalMonthly * 12);
-    const deltaPrimoAnno = margineAtteso - margineAttuale;
-    roi = investimentoPrimoAnno > 0 ? deltaPrimoAnno / investimentoPrimoAnno : null;
+  if (roiInputsOk && roiSnap) {
+    margineAttuale = roiSnap.margineAnnuoBaseline;
+    margineAtteso = roiSnap.margineStimatoProposta;
+    investimentoPrimoAnno = roiSnap.valoreFatturatoProposta;
+    roi = roiSnap.indice ?? null;
+    if (margineAtteso != null && margineAttuale != null) {
+      deltaPrimoAnno = margineAtteso - margineAttuale;
+    }
   }
 
   let perditaContratti: number | null = null;
@@ -474,7 +472,7 @@ function renderPage5(quote: QuoteWithRelations) {
       </table>
       <div class="display" style="margin-top:4mm;font-size:14pt;color:var(--mc-green)">
         Delta primo anno: + ${escapeHtml(
-          formatEuro(Math.max(0, Math.round((margineAtteso || 0) - (margineAttuale || 0))))
+          formatEuro(Math.max(0, Math.round(deltaPrimoAnno ?? 0)))
         )}
       </div>
       <div style="margin-top:2mm;font-size:10pt">
@@ -685,7 +683,7 @@ function renderPage6(quote: QuoteWithRelations) {
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75);text-transform:uppercase;letter-spacing:0.14em;font-size:9pt"><b>Primo anno completo</b></td>
             <td class="right" style="border-bottom:none"><span class="display" style="font-style:italic;font-size:28pt;color:var(--mc-orange)">${escapeHtml(
-              formatEuro(Math.max(0, setupTotals.totalSetup + quote.totalMonthly * 12))
+              formatEuro(Math.max(0, primoAnnoCompleto))
             )}</span></td>
           </tr>
         </tbody>

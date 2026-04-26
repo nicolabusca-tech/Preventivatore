@@ -5,11 +5,18 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   buildRoiSnapshot,
+  computeDiagnosiPesoTotale,
   computeDiagnosiShareValue,
   mergeRoiDefaults,
   type RoiFormInputs,
 } from "@/lib/roi";
 import { CrmCustomerSearch, type CrmCustomer } from "@/components/CrmCustomerSearch";
+import {
+  applicaCodiceManuale,
+  calcolaScontoVolume,
+  canonePrepayFromMonthly,
+  type SelectedItem,
+} from "@/lib/discounts";
 
 type Product = {
   id: string;
@@ -28,6 +35,9 @@ type Product = {
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
+const AUDIT_LAMPO_CODE = "AUDIT_LAMPO";
+const DIAGNOSI_VOUCHER_AMOUNT = 497;
+const AUDIT_VOUCHER_AMOUNT = 147;
 
 const blockLabels: Record<string, string> = {
   FRONTEND: "Front-end",
@@ -45,6 +55,7 @@ const blockLabels: Record<string, string> = {
   DCE: "Direzione Commerciale Esterna",
 };
 
+// Stesso ordine del listino admin: DCE ("Direzione Commerciale Esterna") in fondo, dopo ADS.
 const blockOrder = [
   "FRONTEND",
   "01",
@@ -106,10 +117,10 @@ export default function NuovoPreventivoPage() {
   const [originCliente, setOriginCliente] = useState("");
   const [estrattoDiagnosi, setEstrattoDiagnosi] = useState("");
   const [roiInputs, setRoiInputs] = useState<RoiFormInputs>(() => mergeRoiDefaults(null));
-  const [diagnosiGiaPagata, setDiagnosiGiaPagata] = useState(true);
-
   const [selected, setSelected] = useState<Map<string, number>>(new Map());
-  const [dceProductId, setDceProductId] = useState<string>("");
+
+  const diagnosiGiaPagata = selected.has(DIAGNOSI_CODE);
+  const voucherAuditApplied = selected.has(AUDIT_LAMPO_CODE);
 
   const [scontoCrmAnnuale, setScontoCrmAnnuale] = useState(true);
   const [scontoAiVocaleAnnuale, setScontoAiVocaleAnnuale] = useState(false);
@@ -117,6 +128,15 @@ export default function NuovoPreventivoPage() {
 
   const [notes, setNotes] = useState("");
   const [expiresInDays, setExpiresInDays] = useState(30);
+
+  const [discountCodeInput, setDiscountCodeInput] = useState("");
+  const [discountCodeMessage, setDiscountCodeMessage] = useState<string | null>(null);
+  const [discountValidating, setDiscountValidating] = useState(false);
+  const [manualDiscount, setManualDiscount] = useState<{
+    code: string;
+    discountPercent: number;
+    discountAmount: number;
+  } | null>(null);
 
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(
     new Set(["FRONTEND", "01"])
@@ -167,30 +187,33 @@ export default function NuovoPreventivoPage() {
     return map;
   }, [products]);
 
-  const dceOptions = useMemo(() => {
-    return products
-      .filter((p) => DCE_ALLOWED_CODES.includes(p.code as any))
-      .sort((a, b) => a.price - b.price);
+  /** Blocchi canone con una sola voce attiva: CRM, AI Vocale, WhatsApp. */
+  const exclusiveCanoneCodeSets = useMemo(() => {
+    const blocks = ["CANONI_CRM", "CANONI_AIVOCALE", "CANONI_WA"] as const;
+    return blocks.map((b) => new Set(products.filter((p) => p.block === b).map((p) => p.code)));
   }, [products]);
 
-  const totals = useMemo(() => {
-    let setup = 0;
+  function clearPeerCanoneSelections(next: Map<string, number>, code: string) {
+    for (const codeSet of exclusiveCanoneCodeSets) {
+      if (!codeSet.has(code)) continue;
+      for (const c of codeSet) {
+        if (c !== code) next.delete(c);
+      }
+      return;
+    }
+  }
+
+  const baseTotals = useMemo(() => {
+    let setupModules = 0;
     let monthly = 0;
     let crmMonthly = 0;
     let aiMonthly = 0;
     let waMonthly = 0;
-
-    // Diagnosi: se già pagata, va scalata come voucher (−497€) dal setup
-    // Se NON è già pagata, viene addebitata come voce setup (+497€) in automatico
-    const diagnosiAmount = 497;
-    setup += diagnosiGiaPagata ? -diagnosiAmount : diagnosiAmount;
-    if (setup < 0) setup = 0;
-
-    const dce = dceOptions.find((p) => p.id === dceProductId);
-    if (dce) monthly += dce.price;
+    const setupBreakdown: { name: string; lineTotal: number; quantity: number; code: string }[] = [];
+    const monthlyBreakdown: { name: string; lineTotal: number; quantity: number; code: string }[] = [];
 
     for (const [code, qty] of selected.entries()) {
-      if (code === DIAGNOSI_CODE) continue;
+      if (code === DIAGNOSI_CODE || code === AUDIT_LAMPO_CODE) continue;
       const p = products.find((x) => x.code === code);
       if (!p) continue;
       const itemTotal = p.price * qty;
@@ -199,14 +222,56 @@ export default function NuovoPreventivoPage() {
         if (p.block === "CANONI_CRM") crmMonthly += itemTotal;
         if (p.block === "CANONI_AIVOCALE") aiMonthly += itemTotal;
         if (p.block === "CANONI_WA") waMonthly += itemTotal;
+        const esclusoDallaRicorrenzaMensile =
+          (p.block === "CANONI_CRM" && scontoCrmAnnuale) ||
+          (p.block === "CANONI_AIVOCALE" && scontoAiVocaleAnnuale) ||
+          (p.block === "CANONI_WA" && scontoWaAnnuale);
+        if (!esclusoDallaRicorrenzaMensile) {
+          monthlyBreakdown.push({
+            name: p.name,
+            lineTotal: itemTotal,
+            quantity: qty,
+            code: p.code,
+          });
+        }
       } else {
-        setup += itemTotal;
+        setupModules += itemTotal;
+        setupBreakdown.push({
+          name: p.name,
+          lineTotal: itemTotal,
+          quantity: qty,
+          code: p.code,
+        });
       }
     }
 
-    const prepaidCrm = scontoCrmAnnuale ? Math.round(crmMonthly * 12 * 0.8) : 0;
-    const prepaidAi = scontoAiVocaleAnnuale ? Math.round(aiMonthly * 12 * 0.85) : 0;
-    const prepaidWa = scontoWaAnnuale ? Math.round(waMonthly * 12 * 0.85) : 0;
+    // Diagnosi in listino = credito (già versata) solo se la selezioni. Nessun +497 "automatico" a preventivo
+    // vuoto: prima era addebitata come voce implici­ta, ma in UI generava 497€ senza voci in offerta.
+    const setupGross = setupModules;
+    let setup = setupGross;
+    if (diagnosiGiaPagata) {
+      setup = Math.max(0, setup - DIAGNOSI_VOUCHER_AMOUNT);
+    }
+    if (voucherAuditApplied) {
+      setup = Math.max(0, setup - AUDIT_VOUCHER_AMOUNT);
+    }
+
+    const crmPrepayBreakdown =
+      scontoCrmAnnuale && crmMonthly > 0
+        ? canonePrepayFromMonthly(crmMonthly, "CRM")
+        : null;
+    const aiPrepayBreakdown =
+      scontoAiVocaleAnnuale && aiMonthly > 0
+        ? canonePrepayFromMonthly(aiMonthly, "AIVOCALE")
+        : null;
+    const waPrepayBreakdown =
+      scontoWaAnnuale && waMonthly > 0
+        ? canonePrepayFromMonthly(waMonthly, "WA")
+        : null;
+
+    const prepaidCrm = crmPrepayBreakdown?.netOneTime ?? 0;
+    const prepaidAi = aiPrepayBreakdown?.netOneTime ?? 0;
+    const prepaidWa = waPrepayBreakdown?.netOneTime ?? 0;
 
     const monthlyAfterPrepay =
       monthly -
@@ -218,7 +283,11 @@ export default function NuovoPreventivoPage() {
     const annualTotal = oneTimeTotal + monthlyAfterPrepay * 12;
 
     return {
+      setupModules,
+      setupGross,
       setup,
+      setupBreakdown,
+      monthlyBreakdown,
       monthly,
       crmMonthly,
       aiMonthly,
@@ -229,55 +298,184 @@ export default function NuovoPreventivoPage() {
       prepaidCrm,
       prepaidAi,
       prepaidWa,
+      crmPrepayBreakdown,
+      aiPrepayBreakdown,
+      waPrepayBreakdown,
     };
   }, [
     products,
     selected,
-    dceOptions,
-    dceProductId,
     diagnosiGiaPagata,
+    voucherAuditApplied,
     scontoAiVocaleAnnuale,
     scontoCrmAnnuale,
     scontoWaAnnuale,
   ]);
 
+  const totals = useMemo(() => {
+    const setupAfterVoucher = baseTotals.setup;
+
+    const selectedDiscountItems: SelectedItem[] = Array.from(selected.entries())
+      .map(([code, qty]) => {
+        const p = products.find((x) => x.code === code);
+        if (!p) return null;
+        if (code === DIAGNOSI_CODE || code === AUDIT_LAMPO_CODE) return null;
+        return {
+          code: p.code,
+          qty,
+          price: p.price,
+          isMonthly: p.isMonthly,
+          block: p.block,
+        };
+      })
+      .filter(Boolean) as SelectedItem[];
+
+    const volume = calcolaScontoVolume(selectedDiscountItems);
+
+    const manualRes = manualDiscount
+      ? applicaCodiceManuale(
+          setupAfterVoucher,
+          manualDiscount.discountPercent,
+          manualDiscount.code,
+          manualDiscount.discountAmount > 0
+            ? { fixedAmount: manualDiscount.discountAmount }
+            : undefined
+        )
+      : null;
+
+    const chosen = manualRes
+      ? {
+          discountType: "manual" as const,
+          discountCode: manualDiscount!.code,
+          discountPercent: manualDiscount!.discountPercent,
+          discountAmount: manualRes.amount,
+          discountLabel: manualRes.label,
+        }
+      : volume.type !== "none"
+        ? {
+            discountType: volume.type,
+            discountCode: null as string | null,
+            discountPercent: volume.percent,
+            discountAmount: volume.amount,
+            discountLabel: volume.label,
+          }
+        : {
+            discountType: null as string | null,
+            discountCode: null as string | null,
+            discountPercent: 0,
+            discountAmount: 0,
+            discountLabel: "" as string,
+          };
+
+    const setupNet = Math.max(0, setupAfterVoucher - chosen.discountAmount);
+    const oneTimeTotal = setupNet + baseTotals.prepaidCrm + baseTotals.prepaidAi + baseTotals.prepaidWa;
+    const annualTotal = oneTimeTotal + baseTotals.monthlyAfterPrepay * 12;
+
+    return {
+      ...baseTotals,
+      setupAfterVoucher,
+      setupNet,
+      oneTimeTotal,
+      annualTotal,
+      discountType: chosen.discountType,
+      discountCode: chosen.discountCode,
+      discountPercent: chosen.discountPercent,
+      discountAmount: chosen.discountAmount,
+      discountLabel: chosen.discountLabel,
+      volumeDiscount: volume,
+    };
+  }, [baseTotals, products, selected, manualDiscount]);
+
   const roiLive = useMemo(() => {
-    const selectedForRoi = [
-      ...(dceProductId
-        ? (() => {
-            const dce = dceOptions.find((p) => p.id === dceProductId);
-            return dce
-              ? [{ productCode: dce.code, quantity: 1, price: dce.price, isMonthly: true }]
-              : [];
-          })()
-        : []),
-      ...Array.from(selected.entries())
-        .map(([code, quantity]) => {
-          const p = products.find((x) => x.code === code);
-          if (!p) return null;
-          return { productCode: p.code, quantity, price: p.price, isMonthly: p.isMonthly };
-        })
-        .filter(Boolean),
-    ] as { productCode: string; quantity: number; price: number; isMonthly: boolean }[];
+    const selectedForRoi = Array.from(selected.entries())
+      .map(([code, quantity]) => {
+        const p = products.find((x) => x.code === code);
+        if (!p) return null;
+        if (code === AUDIT_LAMPO_CODE) return null;
+        return { productCode: p.code, quantity, price: p.price, isMonthly: p.isMonthly };
+      })
+      .filter(Boolean) as { productCode: string; quantity: number; price: number; isMonthly: boolean }[];
 
     const byCode = new Map<string, { diagnosiPeso: number; isMonthly: boolean }>(
       products.map((p) => [p.code, { diagnosiPeso: p.diagnosiPeso || 0, isMonthly: p.isMonthly }])
     );
 
     const diagnosiShareValue = computeDiagnosiShareValue(selectedForRoi, byCode);
+    const diagnosiPesoTotale = computeDiagnosiPesoTotale(selectedForRoi, byCode);
     return buildRoiSnapshot(
       roiInputs,
       totals.oneTimeTotal,
       totals.monthlyAfterPrepay,
-      diagnosiShareValue
+      diagnosiShareValue,
+      diagnosiPesoTotale
     );
-  }, [products, roiInputs, selected, totals.monthlyAfterPrepay, totals.oneTimeTotal, dceOptions, dceProductId]);
+  }, [products, roiInputs, selected, totals.monthlyAfterPrepay, totals.oneTimeTotal]);
+
+  async function applyDiscountCode() {
+    setDiscountCodeMessage(null);
+    const raw = discountCodeInput.trim().toUpperCase();
+    if (!raw) {
+      setManualDiscount(null);
+      return;
+    }
+
+    setDiscountValidating(true);
+    const res = await fetch("/api/discount-codes/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: raw }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setDiscountValidating(false);
+
+    if (!res.ok || !data?.valid) {
+      setManualDiscount(null);
+      setDiscountCodeMessage(data?.error || "Codice non valido.");
+      return;
+    }
+
+    const pct = Number(data.discountPercent || 0);
+    const amt = Number(data.discountAmount || 0);
+    if (pct <= 0 && amt <= 0) {
+      setManualDiscount(null);
+      setDiscountCodeMessage("Codice senza valore sconto configurato.");
+      return;
+    }
+
+    setManualDiscount({
+      code: String(data.code || raw).toUpperCase(),
+      discountPercent: pct > 0 ? pct : 0,
+      discountAmount: amt > 0 ? amt : 0,
+    });
+    setDiscountCodeInput(String(data.code || raw).toUpperCase());
+    setDiscountCodeMessage("Codice applicato: sostituisce lo sconto volume automatico.");
+  }
+
+  function clearDiscountCode() {
+    setDiscountCodeInput("");
+    setDiscountCodeMessage(null);
+    setManualDiscount(null);
+  }
 
   function toggleProduct(code: string) {
     setSelected((prev) => {
       const next = new Map(prev);
-      if (next.has(code)) next.delete(code);
-      else next.set(code, 1);
+      if (next.has(code)) {
+        next.delete(code);
+        return next;
+      }
+      if (code === DIAGNOSI_CODE) {
+        next.delete(AUDIT_LAMPO_CODE);
+      } else if (code === AUDIT_LAMPO_CODE) {
+        next.delete(DIAGNOSI_CODE);
+      }
+      if (DCE_ALLOWED_CODES.includes(code as (typeof DCE_ALLOWED_CODES)[number])) {
+        for (const c of DCE_ALLOWED_CODES) {
+          if (c !== code) next.delete(c);
+        }
+      }
+      clearPeerCanoneSelections(next, code);
+      next.set(code, 1);
       return next;
     });
   }
@@ -286,7 +484,24 @@ export default function NuovoPreventivoPage() {
     setSelected((prev) => {
       const next = new Map(prev);
       if (qty <= 0) next.delete(code);
-      else next.set(code, qty);
+      else if (code === DIAGNOSI_CODE || code === AUDIT_LAMPO_CODE) next.set(code, 1);
+      else if (DCE_ALLOWED_CODES.includes(code as (typeof DCE_ALLOWED_CODES)[number]) && qty > 0) {
+        for (const c of DCE_ALLOWED_CODES) {
+          if (c !== code) next.delete(c);
+        }
+        next.set(code, 1);
+      } else if (qty > 0) {
+        for (const s of exclusiveCanoneCodeSets) {
+          if (s.has(code)) {
+            for (const c of s) {
+              if (c !== code) next.delete(c);
+            }
+            next.set(code, qty);
+            return next;
+          }
+        }
+        next.set(code, qty);
+      } else next.set(code, qty);
       return next;
     });
   }
@@ -312,10 +527,6 @@ export default function NuovoPreventivoPage() {
   async function handleSubmit() {
     if (!clientName.trim()) {
       setError("Il nome del cliente è obbligatorio.");
-      return;
-    }
-    if (!dceProductId) {
-      setError("Seleziona prima il livello DCE: senza regia il sistema non parte.");
       return;
     }
     if (selected.size === 0) {
@@ -368,15 +579,27 @@ export default function NuovoPreventivoPage() {
         roiMargineCommessa: roiInputs.margineCommessa,
         roiSnapshot: roiLive.snapshot,
         items,
-        dceProductId,
+        dceProductId: (() => {
+          for (const c of DCE_ALLOWED_CODES) {
+            if (selected.has(c)) {
+              return products.find((p) => p.code === c)?.id ?? null;
+            }
+          }
+          return null;
+        })(),
+        voucherAuditApplied,
         notes: notes.trim() || null,
         expiresAt,
-        // `totalSetup` deve rappresentare SOLO il setup sistema (una tantum).
-        // Le eventuali una-tantum aggiuntive (es. canoni anticipati) vanno nel totale annuo.
-        totalSetup: totals.setup,
+        // Una tantum complessiva: voci setup (al netto sconti sul setup) + eventuali canoni
+        // CRM/AI/WA pagati in anticipo annuale. `totalMonthly` è già al netto di quelle quote.
+        totalSetup: totals.oneTimeTotal,
         totalMonthly: totals.monthlyAfterPrepay,
         totalAnnual: totals.annualTotal,
-        setupBeforeDiscount: totals.setup,
+        setupBeforeDiscount: totals.setupGross,
+        discountType: totals.discountType,
+        discountAmount: totals.discountAmount,
+        discountCode: totals.discountCode,
+        discountPercent: totals.discountPercent,
         scontoCrmAnnuale,
         scontoAiVocaleAnnuale,
         scontoWaAnnuale,
@@ -585,20 +808,12 @@ export default function NuovoPreventivoPage() {
 
           <div className="card p-5 sm:p-6">
             <h2 className="text-2xl mb-4">Diagnosi &amp; ROI (prima della proposta)</h2>
+            <p className="text-sm mb-4" style={{ color: "var(--mc-text-secondary)" }}>
+              Seleziona <strong>Diagnosi Strategica</strong> o <strong>Audit Lampo</strong> sotto, nel
+              listino: indicano l&apos;importo come già versato (credito, una sola tra le due). I totali
+              a destra li mostrano in verde con il segno meno.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    className="checkbox mt-0.5"
-                    checked={diagnosiGiaPagata}
-                    onChange={(e) => setDiagnosiGiaPagata(e.target.checked)}
-                  />
-                  <span>
-                    Diagnosi Strategica già pagata (applica voucher −{formatEuro(497)} sul setup)
-                  </span>
-                </label>
-              </div>
               <div className="sm:col-span-2">
                 <label className="label">Origine cliente</label>
                 <input
@@ -679,35 +894,15 @@ export default function NuovoPreventivoPage() {
 
           <div className="card p-5 sm:p-6">
             <h2 className="text-2xl mb-4">Componi l&apos;offerta</h2>
-
-            <div
-              className="mb-5 p-4 rounded-lg"
-              style={{ background: "var(--mc-bg-inset)", border: "1px solid var(--mc-border)" }}
-            >
-              <div className="label">
-                Direzione mensile (DCE) <span style={{ color: "var(--mc-accent)" }}>*</span>
-              </div>
-              <select
-                className="input"
-                value={dceProductId}
-                onChange={(e) => setDceProductId(e.target.value)}
-              >
-                <option value="">Seleziona livello DCE…</option>
-                {dceOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — {formatEuro(p.price)}/mese
-                  </option>
-                ))}
-              </select>
-              <p className="helper-text">
-                Senza regia il sistema non parte: il salvataggio resta bloccato finché non selezioni il livello.
-              </p>
-            </div>
+            <p className="text-sm mb-4" style={{ color: "var(--mc-text-secondary)" }}>
+              <strong>Direzione Commerciale Esterna (DCE)</strong> è l&apos;ultimo blocco in pagina (come nel
+              listino), dopo ADS: stesse voci DCE Base / Strutturato / Enterprise; al massimo un livello.
+              Diagnosi e Audit si scelgono in <strong>Front-end</strong> (voucher, non insieme).
+            </p>
 
             <div className="space-y-2.5">
               {blockOrder.map((block) => {
-                if (block === "DCE") return null;
-                const list = (productsByBlock.get(block) || []).filter((p) => p.code !== DIAGNOSI_CODE);
+                const list = (productsByBlock.get(block) || []) as Product[];
                 if (list.length === 0) return null;
                 const isExpanded = expandedBlocks.has(block);
                 const selectedCount = list.filter((p) => selected.has(p.code)).length;
@@ -758,7 +953,24 @@ export default function NuovoPreventivoPage() {
                     </button>
 
                     {isExpanded && (
-                      <div className="divide-mc">
+                      <>
+                        {(block === "CANONI_CRM" ||
+                          block === "CANONI_AIVOCALE" ||
+                          block === "CANONI_WA") && (
+                          <div
+                            className="px-4 py-2.5 text-xs border-b"
+                            style={{
+                              color: "var(--mc-text-secondary)",
+                              background: "var(--mc-bg-inset)",
+                              borderColor: "var(--mc-border)",
+                            }}
+                          >
+                            <strong>{blockLabels[block] || block}</strong>: puoi attivare{" "}
+                            <strong>una sola</strong> tra le voci sotto; scegliendone un&apos;altra, la
+                            precedente si deseleziona.
+                          </div>
+                        )}
+                        <div className="divide-mc">
                         {list.map((p) => {
                           const isSelected = selected.has(p.code);
                           const qty = selected.get(p.code) || 1;
@@ -818,23 +1030,33 @@ export default function NuovoPreventivoPage() {
                                       {showDetails ? "Nascondi dettagli" : "Mostra dettagli"}
                                     </button>
 
-                                    {isSelected && (
-                                      <div className="ml-auto flex items-center gap-2 text-xs">
-                                        <span style={{ color: "var(--mc-text-muted)" }}>
-                                          {p.isMonthly ? "Mesi" : "Qtà"}
-                                        </span>
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          className="input"
-                                          style={{ width: 88, padding: "6px 10px" }}
-                                          value={qty}
-                                          onChange={(e) =>
-                                            updateQuantity(p.code, Number(e.target.value) || 1)
-                                          }
-                                        />
-                                      </div>
-                                    )}
+                                    {isSelected &&
+                                      (p.code === DIAGNOSI_CODE ||
+                                      p.code === AUDIT_LAMPO_CODE ||
+                                      DCE_ALLOWED_CODES.includes(p.code as (typeof DCE_ALLOWED_CODES)[number]) ? (
+                                        <div
+                                          className="ml-auto text-xs"
+                                          style={{ color: "var(--mc-text-muted)" }}
+                                        >
+                                          Qtà 1
+                                        </div>
+                                      ) : (
+                                        <div className="ml-auto flex items-center gap-2 text-xs">
+                                          <span style={{ color: "var(--mc-text-muted)" }}>
+                                            {p.isMonthly ? "Mesi" : "Qtà"}
+                                          </span>
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            className="input"
+                                            style={{ width: 88, padding: "6px 10px" }}
+                                            value={qty}
+                                            onChange={(e) =>
+                                              updateQuantity(p.code, Number(e.target.value) || 1)
+                                            }
+                                          />
+                                        </div>
+                                      ))}
                                   </div>
 
                                   {showDetails && (
@@ -875,7 +1097,8 @@ export default function NuovoPreventivoPage() {
                             </div>
                           );
                         })}
-                      </div>
+                        </div>
+                      </>
                     )}
                   </div>
                 );
@@ -919,84 +1142,266 @@ export default function NuovoPreventivoPage() {
         <div className="lg:col-span-1">
           <div className="card p-5 lg:sticky lg:top-4 space-y-4">
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span style={{ color: "var(--mc-text-secondary)" }}>Setup una tantum</span>
-                <span className="font-semibold tabular-nums">{formatEuro(totals.setup)}</span>
+              <div>
+                <div
+                  className="text-xs font-bold uppercase tracking-wider mb-2"
+                  style={{ color: "var(--mc-text-secondary)" }}
+                >
+                  Setup una tantum
+                </div>
+                {totals.setupBreakdown.length === 0 ? (
+                  <div className="text-xs pl-0 mb-2" style={{ color: "var(--mc-text-muted)" }}>
+                    Nessuna voce a setup. Aggiungila dai blocchi listino.
+                  </div>
+                ) : (
+                  <ul className="space-y-1.5 mb-2 pl-0 list-none">
+                    {totals.setupBreakdown.map((row) => (
+                      <li key={row.code} className="flex justify-between gap-2 text-xs">
+                        <span className="min-w-0" style={{ color: "var(--mc-text-secondary)" }}>
+                          {row.name}
+                          {row.quantity > 1 ? (
+                            <span className="opacity-80"> · {row.quantity}×</span>
+                          ) : null}
+                        </span>
+                        <span className="shrink-0 font-semibold tabular-nums">
+                          {formatEuro(row.lineTotal)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div
+                  className="flex justify-between gap-2 pt-1 border-t"
+                  style={{ borderColor: "var(--mc-border)" }}
+                >
+                  <span className="font-semibold" style={{ color: "var(--mc-text)" }}>
+                    Setup totale
+                  </span>
+                  <span className="font-bold tabular-nums">{formatEuro(totals.setupGross)}</span>
+                </div>
+                <p className="text-[10px] mt-1" style={{ color: "var(--mc-text-muted)" }}>
+                  Somma delle voci «una tantum» selezionate.
+                </p>
+
+                {(totals.crmMonthly > 0 || totals.aiMonthly > 0 || totals.waMonthly > 0) && (
+                  <div
+                    className="mt-3 pt-3 border-t"
+                    style={{ borderColor: "var(--mc-border)" }}
+                  >
+                    <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--mc-text-secondary)" }}>
+                      Canoni a pagamento annuale anticipato
+                    </div>
+                    <p className="text-[10px] mb-3" style={{ color: "var(--mc-text-muted)" }}>
+                      Se attivo, l’importo dell’annuo anticipato (al netto dello sconto) confluisce nelle
+                      voci una tantum del primo anno; la stessa voce scompare da «Ricorrenza mensile».
+                    </p>
+                    {totals.crmMonthly > 0 && (
+                      <div className="mt-2 first:mt-0">
+                        <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            className="checkbox mt-0.5"
+                            checked={scontoCrmAnnuale}
+                            onChange={(e) => setScontoCrmAnnuale(e.target.checked)}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium">Canone CRM — pagamento annuale anticipato (−20%)</div>
+                            {scontoCrmAnnuale && totals.crmPrepayBreakdown && (
+                              <div
+                                className="mt-1.5 space-y-0.5 pl-0.5"
+                                style={{ color: "var(--mc-text-secondary)" }}
+                              >
+                                <div className="flex justify-between gap-2">
+                                  <span>12× canone ({formatEuro(totals.crmMonthly)}/mese)</span>
+                                  <span className="tabular-nums">
+                                    {formatEuro(totals.crmPrepayBreakdown.fullAnnual)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2" style={{ color: "var(--mc-success)" }}>
+                                  <span>Sconto 20% su quell’importo</span>
+                                  <span className="tabular-nums">
+                                    −{formatEuro(totals.crmPrepayBreakdown.discountAmount)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2 font-semibold" style={{ color: "var(--mc-text)" }}>
+                                  <span>Anticipo da versare (una tantum)</span>
+                                  <span className="tabular-nums" style={{ color: "var(--mc-success)" }}>
+                                    {formatEuro(totals.crmPrepayBreakdown.netOneTime)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    )}
+                    {totals.aiMonthly > 0 && (
+                      <div className="mt-2">
+                        <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            className="checkbox mt-0.5"
+                            checked={scontoAiVocaleAnnuale}
+                            onChange={(e) => setScontoAiVocaleAnnuale(e.target.checked)}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium">AI Vocale — pagamento annuale anticipato (−15%)</div>
+                            {scontoAiVocaleAnnuale && totals.aiPrepayBreakdown && (
+                              <div
+                                className="mt-1.5 space-y-0.5 pl-0.5"
+                                style={{ color: "var(--mc-text-secondary)" }}
+                              >
+                                <div className="flex justify-between gap-2">
+                                  <span>12× canone ({formatEuro(totals.aiMonthly)}/mese)</span>
+                                  <span className="tabular-nums">
+                                    {formatEuro(totals.aiPrepayBreakdown.fullAnnual)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2" style={{ color: "var(--mc-success)" }}>
+                                  <span>Sconto 15% su quell’importo</span>
+                                  <span className="tabular-nums">
+                                    −{formatEuro(totals.aiPrepayBreakdown.discountAmount)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2 font-semibold" style={{ color: "var(--mc-text)" }}>
+                                  <span>Anticipo da versare (una tantum)</span>
+                                  <span className="tabular-nums" style={{ color: "var(--mc-success)" }}>
+                                    {formatEuro(totals.aiPrepayBreakdown.netOneTime)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    )}
+                    {totals.waMonthly > 0 && (
+                      <div className="mt-2">
+                        <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            className="checkbox mt-0.5"
+                            checked={scontoWaAnnuale}
+                            onChange={(e) => setScontoWaAnnuale(e.target.checked)}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium">WhatsApp — pagamento annuale anticipato (−15%)</div>
+                            {scontoWaAnnuale && totals.waPrepayBreakdown && (
+                              <div
+                                className="mt-1.5 space-y-0.5 pl-0.5"
+                                style={{ color: "var(--mc-text-secondary)" }}
+                              >
+                                <div className="flex justify-between gap-2">
+                                  <span>12× canone ({formatEuro(totals.waMonthly)}/mese)</span>
+                                  <span className="tabular-nums">
+                                    {formatEuro(totals.waPrepayBreakdown.fullAnnual)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2" style={{ color: "var(--mc-success)" }}>
+                                  <span>Sconto 15% su quell’importo</span>
+                                  <span className="tabular-nums">
+                                    −{formatEuro(totals.waPrepayBreakdown.discountAmount)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between gap-2 font-semibold" style={{ color: "var(--mc-text)" }}>
+                                  <span>Anticipo da versare (una tantum)</span>
+                                  <span className="tabular-nums" style={{ color: "var(--mc-success)" }}>
+                                    {formatEuro(totals.waPrepayBreakdown.netOneTime)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {totals.monthly > 0 && (
-                <div className="flex justify-between">
-                  <span style={{ color: "var(--mc-text-secondary)" }}>Canoni mensili</span>
-                  <span className="font-semibold tabular-nums">
-                    {formatEuro(totals.monthly)}/mese
+              {diagnosiGiaPagata && (
+                <div className="flex justify-between" style={{ color: "var(--mc-success)" }}>
+                  <span className="text-xs">Diagnosi Strategica (già versata)</span>
+                  <span className="font-semibold text-xs tabular-nums">−{formatEuro(DIAGNOSI_VOUCHER_AMOUNT)}</span>
+                </div>
+              )}
+
+              {voucherAuditApplied && (
+                <div className="flex justify-between" style={{ color: "var(--mc-success)" }}>
+                  <span className="text-xs">Audit Lampo (già versato)</span>
+                  <span className="font-semibold text-xs tabular-nums">−{formatEuro(AUDIT_VOUCHER_AMOUNT)}</span>
+                </div>
+              )}
+
+              {totals.discountAmount > 0 && (
+                <div className="flex justify-between" style={{ color: "var(--mc-success)" }}>
+                  <span className="text-xs">
+                    {totals.discountType === "manual"
+                      ? `Codice ${totals.discountCode || ""}`.trim()
+                      : totals.volumeDiscount?.label || "Sconto"}
+                  </span>
+                  <span className="font-semibold text-xs tabular-nums">
+                    −{formatEuro(totals.discountAmount)}
                   </span>
                 </div>
               )}
 
-              {(totals.crmMonthly > 0 || totals.aiMonthly > 0 || totals.waMonthly > 0) && (
-                <div className="pt-3" style={{ borderTop: "1px solid var(--mc-border)" }}>
-                  <div className="text-xs font-bold uppercase tracking-wider mb-2">
-                    Pagamento annuale anticipato
-                  </div>
-
-                  {totals.crmMonthly > 0 && (
-                    <label className="flex items-start gap-2 text-xs cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        className="checkbox mt-0.5"
-                        checked={scontoCrmAnnuale}
-                        onChange={(e) => setScontoCrmAnnuale(e.target.checked)}
-                      />
-                      <span>
-                        CRM (−20%){" "}
-                        {scontoCrmAnnuale && (
-                          <span style={{ color: "var(--mc-success)" }}>
-                            · {formatEuro(totals.prepaidCrm)} una tantum
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  )}
-
-                  {totals.aiMonthly > 0 && (
-                    <label className="flex items-start gap-2 text-xs cursor-pointer select-none mt-2">
-                      <input
-                        type="checkbox"
-                        className="checkbox mt-0.5"
-                        checked={scontoAiVocaleAnnuale}
-                        onChange={(e) => setScontoAiVocaleAnnuale(e.target.checked)}
-                      />
-                      <span>
-                        AI Vocale (−15%){" "}
-                        {scontoAiVocaleAnnuale && (
-                          <span style={{ color: "var(--mc-success)" }}>
-                            · {formatEuro(totals.prepaidAi)} una tantum
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  )}
-
-                  {totals.waMonthly > 0 && (
-                    <label className="flex items-start gap-2 text-xs cursor-pointer select-none mt-2">
-                      <input
-                        type="checkbox"
-                        className="checkbox mt-0.5"
-                        checked={scontoWaAnnuale}
-                        onChange={(e) => setScontoWaAnnuale(e.target.checked)}
-                      />
-                      <span>
-                        WhatsApp (−15%){" "}
-                        {scontoWaAnnuale && (
-                          <span style={{ color: "var(--mc-success)" }}>
-                            · {formatEuro(totals.prepaidWa)} una tantum
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  )}
+              {totals.discountAmount > 0 && (
+                <div className="flex justify-between">
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Setup dopo sconto</span>
+                  <span className="font-semibold tabular-nums">{formatEuro(totals.setupNet)}</span>
                 </div>
               )}
+
+              <div
+                className="pt-3"
+                style={{ borderTop: "1px solid var(--mc-border)" }}
+              >
+                <div
+                  className="text-xs font-bold uppercase tracking-wider mb-2"
+                  style={{ color: "var(--mc-text-secondary)" }}
+                >
+                  Ricorrenza mensile
+                </div>
+                {totals.monthlyBreakdown.length === 0 && totals.monthlyAfterPrepay <= 0 ? (
+                  <div className="text-xs mb-2" style={{ color: "var(--mc-text-muted)" }}>
+                    {totals.monthly > 0
+                      ? "I canoni CRM / AI / WA risultano tutti a pagamento annuale anticipato: cfr. sopra in «Setup»."
+                      : "Nessun canone mensile. Aggiungilo dai blocchi listino."}
+                  </div>
+                ) : (
+                  <ul className="space-y-1.5 mb-2 pl-0 list-none">
+                    {totals.monthlyBreakdown.map((row) => (
+                      <li key={row.code} className="flex justify-between gap-2 text-xs">
+                        <span className="min-w-0" style={{ color: "var(--mc-text-secondary)" }}>
+                          {row.name}
+                          {row.quantity > 1 ? (
+                            <span className="opacity-80"> · {row.quantity}×</span>
+                          ) : null}
+                        </span>
+                        <span className="shrink-0 font-semibold tabular-nums">
+                          {formatEuro(row.lineTotal)}/mese
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div
+                  className="flex justify-between gap-2 pt-1 border-t"
+                  style={{ borderColor: "var(--mc-border)" }}
+                >
+                  <span className="font-semibold" style={{ color: "var(--mc-text)" }}>
+                    Totale canoni mensili
+                  </span>
+                  <span className="font-bold tabular-nums">
+                    {formatEuro(totals.monthlyAfterPrepay)}/mese
+                  </span>
+                </div>
+                <p className="text-[10px] mt-1" style={{ color: "var(--mc-text-muted)" }}>
+                  Solo voci a ricorrenza non coperte da anticipo annuale; le anticipate sono indicate più
+                  sopra in «Canoni a pagamento annuale anticipato».
+                </p>
+              </div>
             </div>
 
             <div className="pt-4" style={{ borderTop: "2px solid var(--mc-text)" }}>
@@ -1010,6 +1415,38 @@ export default function NuovoPreventivoPage() {
               <div className="text-xs mt-1" style={{ color: "var(--mc-text-muted)" }}>
                 IVA esclusa
               </div>
+            </div>
+
+            <div className="pt-3" style={{ borderTop: "1px solid var(--mc-border)" }}>
+              <div className="label">Codice sconto (opzionale)</div>
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="text"
+                  className="input font-mono"
+                  value={discountCodeInput}
+                  onChange={(e) => setDiscountCodeInput(e.target.value.toUpperCase())}
+                  placeholder="es. AMICO-15"
+                />
+                <button
+                  type="button"
+                  className="btn-secondary text-xs px-3 py-2"
+                  onClick={() => void applyDiscountCode()}
+                  disabled={discountValidating}
+                >
+                  {discountValidating ? "..." : "Applica"}
+                </button>
+              </div>
+              {manualDiscount && (
+                <button type="button" className="btn-ghost text-xs mt-2 px-2 py-1" onClick={clearDiscountCode}>
+                  Rimuovi codice
+                </button>
+              )}
+              {discountCodeMessage && (
+                <p className="helper-text" style={{ color: "var(--mc-text-secondary)" }}>
+                  {discountCodeMessage}
+                </p>
+              )}
+              <p className="helper-text">Si applica al setup; sostituisce lo sconto volume automatico.</p>
             </div>
 
             <div className="card-muted p-4">
@@ -1047,7 +1484,7 @@ export default function NuovoPreventivoPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={saving || selected.size === 0 || !dceProductId}
+              disabled={saving || selected.size === 0}
               className="btn-primary w-full"
             >
               {saving ? "Salvataggio..." : "Salva preventivo"}

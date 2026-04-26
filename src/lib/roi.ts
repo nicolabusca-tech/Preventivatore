@@ -57,11 +57,25 @@ export function computeDiagnosiShareValue(
   return sum;
 }
 
+export function computeDiagnosiPesoTotale(
+  selected: { productCode: string; quantity: number }[],
+  byCode: Map<string, ProductRoiRow>
+): number {
+  let sum = 0;
+  for (const row of selected) {
+    const p = byCode.get(row.productCode);
+    if (!p) continue;
+    sum += (p.diagnosiPeso || 0) * row.quantity;
+  }
+  return sum;
+}
+
 export function buildRoiSnapshot(
   inputs: RoiFormInputs,
   oneTimeTotal: number,
   monthlyTotal: number,
-  diagnosiShareValue: number
+  diagnosiShareValue: number,
+  diagnosiPesoTotale: number
 ): { snapshot: string; payload: RoiSnapshotPayload } {
   const preventiviAnnui = inputs.preventiviMese * 12;
   const conversioneAttuale = inputs.conversioneAttuale / 100;
@@ -70,9 +84,16 @@ export function buildRoiSnapshot(
   const marginePerContratto = inputs.importoMedio * (inputs.margineCommessa / 100);
   const margineAnnuoBaseline = contrattiAttuali * marginePerContratto;
 
-  // TODO: rendere configurabile in B5.1 (admin RoiSettings)
-  const MOLTIPLICATORE_CONVERSIONE = 2.0;
-  const conversioneAttesa = Math.max(0, conversioneAttuale * MOLTIPLICATORE_CONVERSIONE);
+  // FORMULA ROI v2 — usa diagnosiPesoTotale (somma pesi voci selezionate)
+  // Cap assoluto 30% conversione attesa.
+  // Pavimento 6%: se il piano ha peso ≥ 15%, garantiamo almeno 6% di conversione attesa
+  // (utile per clienti che partono da conversione molto bassa, es 2%).
+  const PAVIMENTO_CONVERSIONE = diagnosiPesoTotale >= 15 ? 0.06 : 0;
+  const CAP_CONVERSIONE = 0.3;
+
+  const conversioneAttesaProporzionale = conversioneAttuale * (1 + diagnosiPesoTotale / 100);
+  const conversioneAttesaConPavimento = Math.max(conversioneAttesaProporzionale, PAVIMENTO_CONVERSIONE);
+  const conversioneAttesa = Math.min(conversioneAttesaConPavimento, CAP_CONVERSIONE);
   const contrattiAttesi = preventiviAnnui * conversioneAttesa;
   const margineStimatoProposta = contrattiAttesi * marginePerContratto;
 
@@ -99,9 +120,10 @@ export function liveRoiFromPayload(
   inputs: RoiFormInputs,
   oneTimeTotal: number,
   monthlyTotal: number,
-  diagnosiShareValue: number
+  diagnosiShareValue: number,
+  diagnosiPesoTotale: number
 ) {
-  return buildRoiSnapshot(inputs, oneTimeTotal, monthlyTotal, diagnosiShareValue).payload;
+  return buildRoiSnapshot(inputs, oneTimeTotal, monthlyTotal, diagnosiShareValue, diagnosiPesoTotale).payload;
 }
 
 export function parseRoiSnapshot(s: string | null | undefined): RoiSnapshotPayload | null {

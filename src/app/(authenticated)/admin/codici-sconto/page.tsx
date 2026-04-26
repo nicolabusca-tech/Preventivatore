@@ -9,12 +9,22 @@ type DiscountCode = {
   code: string;
   description: string | null;
   discountPercent: number;
+  discountAmount: number;
   maxUses: number | null;
   usedCount: number;
   expiresAt: string | null;
   active: boolean;
   createdAt: string;
 };
+
+function formatEuro(value: number) {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
 
 function formatDate(d: string | null) {
   if (!d) return "—";
@@ -44,7 +54,9 @@ export default function AdminCodiciScontoPage() {
   // Form nuovo codice
   const [newCode, setNewCode] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [discountMode, setDiscountMode] = useState<"percent" | "amount">("percent");
   const [newPercent, setNewPercent] = useState(10);
+  const [newAmount, setNewAmount] = useState(500);
   const [newMaxUses, setNewMaxUses] = useState("");
   const [newExpiresAt, setNewExpiresAt] = useState("");
   const [formError, setFormError] = useState("");
@@ -71,7 +83,9 @@ export default function AdminCodiciScontoPage() {
   function resetForm() {
     setNewCode("");
     setNewDescription("");
+    setDiscountMode("percent");
     setNewPercent(10);
+    setNewAmount(500);
     setNewMaxUses("");
     setNewExpiresAt("");
     setFormError("");
@@ -79,8 +93,16 @@ export default function AdminCodiciScontoPage() {
 
   async function handleCreate() {
     setFormError("");
-    if (!newCode.trim() || !newPercent) {
-      setFormError("Codice e percentuale sono obbligatori.");
+    if (!newCode.trim()) {
+      setFormError("Il codice è obbligatorio.");
+      return;
+    }
+    if (discountMode === "percent" && (!newPercent || newPercent < 1)) {
+      setFormError("Inserisci una percentuale valida (min 1%).");
+      return;
+    }
+    if (discountMode === "amount" && (!newAmount || newAmount < 1)) {
+      setFormError("Inserisci un importo valido (min 1€).");
       return;
     }
     setCreating(true);
@@ -90,7 +112,8 @@ export default function AdminCodiciScontoPage() {
       body: JSON.stringify({
         code: newCode.trim(),
         description: newDescription || null,
-        discountPercent: newPercent,
+        discountPercent: discountMode === "percent" ? newPercent : 0,
+        discountAmount: discountMode === "amount" ? newAmount : 0,
         maxUses: newMaxUses ? parseInt(newMaxUses) : null,
         expiresAt: newExpiresAt || null,
       }),
@@ -283,23 +306,63 @@ export default function AdminCodiciScontoPage() {
               <label className="label" htmlFor="newPercent">
                 Sconto <span style={{ color: "var(--mc-accent)" }}>*</span>
               </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="newPercent"
-                  type="number"
-                  className="input"
-                  value={newPercent}
-                  onChange={(e) => setNewPercent(parseInt(e.target.value) || 0)}
-                  min="1"
-                  max="50"
-                />
-                <span
-                  className="text-lg font-bold"
-                  style={{ color: "var(--mc-accent)" }}
-                >
-                  %
-                </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="discountMode"
+                    checked={discountMode === "percent"}
+                    onChange={() => setDiscountMode("percent")}
+                  />
+                  Percentuale
+                </label>
+                <label className="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="discountMode"
+                    checked={discountMode === "amount"}
+                    onChange={() => setDiscountMode("amount")}
+                  />
+                  Importo €
+                </label>
               </div>
+
+              {discountMode === "percent" ? (
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    id="newPercent"
+                    type="number"
+                    className="input"
+                    value={newPercent}
+                    onChange={(e) => setNewPercent(parseInt(e.target.value) || 0)}
+                    min="1"
+                    max="50"
+                  />
+                  <span
+                    className="text-lg font-bold"
+                    style={{ color: "var(--mc-accent)" }}
+                  >
+                    %
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    id="newAmount"
+                    type="number"
+                    className="input"
+                    value={newAmount}
+                    onChange={(e) => setNewAmount(parseInt(e.target.value) || 0)}
+                    min="1"
+                  />
+                  <span
+                    className="text-lg font-bold"
+                    style={{ color: "var(--mc-accent)" }}
+                  >
+                    €
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -456,7 +519,9 @@ export default function AdminCodiciScontoPage() {
                           className="font-bold tabular-nums"
                           style={{ color: "var(--mc-success)" }}
                         >
-                          −{c.discountPercent}%
+                          {c.discountAmount > 0
+                            ? `−${formatEuro(c.discountAmount)}`
+                            : `−${c.discountPercent}%`}
                         </span>
                       </td>
                       <td className="text-sm" style={{ color: "var(--mc-text-secondary)" }}>

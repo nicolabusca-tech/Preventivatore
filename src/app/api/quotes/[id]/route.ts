@@ -50,13 +50,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         ? null
         : quote.dceProductId;
 
-  if (wantsDceUpdate && !dceProductId) {
-    return NextResponse.json(
-      { error: "Seleziona prima il livello DCE: senza regia il sistema non parte." },
-      { status: 400 }
-    );
-  }
-
   const prevDceMonthly = quote.items
     .filter((i) => i.isMonthly && DCE_ALLOWED_CODES.includes(i.productCode as any))
     .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
@@ -92,6 +85,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           quantity: 1,
           isMonthly: true,
         },
+      });
+    } else if (wantsDceUpdate && dceProductId === null) {
+      nextTotalMonthly = Math.max(0, quote.totalMonthly - prevDceMonthly);
+      nextTotalAnnual = Math.max(0, quote.totalAnnual - prevDceMonthly * 12);
+      await tx.quoteItem.deleteMany({
+        where: { quoteId: quote.id, isMonthly: true, productCode: { in: [...DCE_ALLOWED_CODES] as any } },
       });
     }
 

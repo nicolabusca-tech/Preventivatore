@@ -66,9 +66,16 @@ export function getDiscountLabel(quote: {
     case "volume_10":
       return "Sconto volume 10% (5+ moduli)";
     case "manual":
-      return quote.discountCode
-        ? `Codice \"${quote.discountCode}\" (-${quote.discountPercent ?? 0}%)`
-        : `Sconto manuale (-${quote.discountPercent ?? 0}%)`;
+      if (quote.discountCode) {
+        if ((quote.discountPercent ?? 0) > 0) {
+          return `Codice \"${quote.discountCode}\" (-${quote.discountPercent}%)`;
+        }
+        return `Codice \"${quote.discountCode}\" (-${formatEuro(amount, false)} €)`;
+      }
+      if ((quote.discountPercent ?? 0) > 0) {
+        return `Sconto manuale (-${quote.discountPercent}%)`;
+      }
+      return `Sconto manuale (-${formatEuro(amount, false)} €)`;
     default:
       return "Sconto applicato";
   }

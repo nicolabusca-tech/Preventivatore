@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { DevCwdBar } from "@/components/DevCwdBar";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <Providers>{children}</Providers>
+        {process.env.NODE_ENV === "development" ? <DevCwdBar /> : null}
       </body>
     </html>
   );

@@ -22,28 +22,6 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
   }
 
-  if (quote.quoteNumber === "Q2026-0004") {
-    const investimentoTeorico = quote.totalSetup + quote.totalMonthly * 12;
-    const extraUnaTantum = Math.max(0, quote.totalAnnual - investimentoTeorico);
-    console.log("[PDF DEBUG][Q2026-0004] totals", {
-      quoteNumber: quote.quoteNumber,
-      setupBeforeDiscount: quote.setupBeforeDiscount,
-      totalSetup: quote.totalSetup,
-      totalMonthly: quote.totalMonthly,
-      totalAnnual: quote.totalAnnual,
-      discountType: quote.discountType,
-      discountAmount: quote.discountAmount,
-      voucherAuditApplied: quote.voucherAuditApplied,
-      extraUnaTantum,
-      items: quote.items.map((i) => ({
-        productCode: i.productCode,
-        price: i.price,
-        quantity: i.quantity,
-        isMonthly: i.isMonthly,
-      })),
-    });
-  }
-
   try {
     const pdfBuffer = await generatePdf(quote);
     const filename = `Piano-Operativo-${quote.quoteNumber}.pdf`;

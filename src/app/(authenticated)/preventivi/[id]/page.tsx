@@ -513,26 +513,55 @@ export default function DettaglioPreventivoPage() {
                           {formatEuro(quote.setupBeforeDiscount || quote.totalSetup)}
                         </span>
                       </div>
-                      {quote.discountAmount > 0 && (
-                        <div
-                          className="flex justify-between"
-                          style={{ color: "var(--mc-success)" }}
-                        >
-                          <span className="text-xs">
-                            {quote.discountType &&
-                              (discountTypeLabels[quote.discountType] ||
-                                quote.discountType)}
-                            {quote.discountCode && ` · ${quote.discountCode}`}
-                            {quote.discountPercent > 0 && ` (−${quote.discountPercent}%)`}
-                            {quote.discountPercent <= 0 &&
-                              quote.discountAmount > 0 &&
-                              ` (−${formatEuro(quote.discountAmount)})`}
-                          </span>
-                          <span className="font-semibold text-xs tabular-nums">
-                            −{formatEuro(quote.discountAmount)}
-                          </span>
-                        </div>
-                      )}
+                      {quote.discountAmount > 0 &&
+                        quote.discountType !== "volume_5" &&
+                        quote.discountType !== "volume_10" && (
+                          <div
+                            className="flex justify-between"
+                            style={{ color: "var(--mc-success)" }}
+                          >
+                            <span className="text-xs">
+                              {quote.discountType &&
+                                (discountTypeLabels[quote.discountType] ||
+                                  quote.discountType)}
+                              {quote.discountCode && ` · ${quote.discountCode}`}
+                              {quote.discountPercent > 0 && ` (−${quote.discountPercent}%)`}
+                              {quote.discountPercent <= 0 &&
+                                quote.discountAmount > 0 &&
+                                ` (−${formatEuro(quote.discountAmount)})`}
+                            </span>
+                            <span className="font-semibold text-xs tabular-nums">
+                              −{formatEuro(quote.discountAmount)}
+                            </span>
+                          </div>
+                        )}
+                      {(quote.discountType === "volume_5" || quote.discountType === "volume_10") &&
+                        quote.discountAmount > 0 && (
+                          <div
+                            className="flex justify-between"
+                            style={{ color: "var(--mc-text-secondary)" }}
+                          >
+                            <span className="text-xs">Credito MC (10% sul setup, 12 mesi)</span>
+                            <span
+                              className="font-semibold text-xs tabular-nums"
+                              style={{ color: "var(--mc-success)" }}
+                            >
+                              {formatEuro(
+                                Math.max(
+                                  0,
+                                  Math.round(
+                                    (Math.max(
+                                      0,
+                                      (quote.setupBeforeDiscount || 0) -
+                                        (quote.diagnosiGiaPagata ? DIAGNOSI_VOUCHER_AMOUNT : 0) -
+                                        (quote.voucherAuditApplied ? AUDIT_VOUCHER_AMOUNT : 0)
+                                    ) * 0.1)
+                                  )
+                                )
+                              )}
+                            </span>
+                          </div>
+                        )}
                       {quote.voucherAuditApplied && (
                         <div
                           className="flex justify-between"

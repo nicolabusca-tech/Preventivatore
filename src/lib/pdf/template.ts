@@ -43,19 +43,30 @@ function computeSetupTotals(quote: QuoteWithRelations) {
   const voucherDiagnosi = quote.diagnosiGiaPagata ? DIAGNOSI_VOUCHER_AMOUNT : 0;
 
   const baseAfterVoucher = Math.max(0, setupBefore - voucherDiagnosi);
+  const isVolume =
+    quote.discountType === "volume_5" || quote.discountType === "volume_10";
   const storedDiscount = quote.discountAmount ?? 0;
-  const discountAmount =
+  const rawDiscountFromQuote =
     storedDiscount > 0
       ? Math.min(storedDiscount, baseAfterVoucher)
       : quote.discountPercent > 0
         ? Math.round(baseAfterVoucher * (quote.discountPercent / 100))
         : 0;
+  // Lo sconto volume resta conteggiato lato commerciale ma non si scala dal totale setup: diventa Credito MC.
+  const discountAmount = isVolume ? 0 : rawDiscountFromQuote;
 
   let totalSetup = baseAfterVoucher - discountAmount;
   if (quote.voucherAuditApplied) totalSetup -= 147;
   if (totalSetup < 0) totalSetup = 0;
 
-  return { setupBefore, voucherDiagnosi, discountAmount, totalSetup };
+  const afterAudit = quote.voucherAuditApplied ? Math.max(0, baseAfterVoucher - 147) : baseAfterVoucher;
+  return {
+    setupBefore,
+    voucherDiagnosi,
+    discountAmount,
+    totalSetup,
+    creditoMetodoCantiere: Math.round(afterAudit * 0.1),
+  };
 }
 
 function renderCover(quote: QuoteWithRelations) {
@@ -125,7 +136,7 @@ function renderPage2(quote: QuoteWithRelations) {
   return `
   <section class="pdf-page" style="padding-bottom:26mm">
     ${pageHeader("02")}
-    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:4mm">Prima del prezzo</div>
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:4mm">02 Prima del prezzo</div>
 
     <div class="no-break">
       <div class="caps orange" style="font-size:8pt;margin-bottom:2mm">IL MANIFESTO</div>
@@ -151,21 +162,24 @@ function renderPage2(quote: QuoteWithRelations) {
           <div class="caps" style="font-size:8pt">LIVELLO 1</div>
           <div class="display" style="font-size:14pt;margin-top:2mm">Setup Sistema</div>
           <div class="muted" style="font-style:italic;font-size:8pt;margin-top:2mm">
-            Le fondamenta. Posizionamento, CRM, materiali commerciali.
+            Le fondamenta che mancavano. Posizionamento, CRM, materiali commerciali. Il punto da cui ogni impresa edile
+            dovrebbe partire per smettere di improvvisare la vendita.
           </div>
         </div>
         <div class="box" style="background:var(--mc-beige-warm)">
           <div class="caps" style="font-size:8pt">LIVELLO 2</div>
           <div class="display" style="font-size:14pt;margin-top:2mm">Acceleratori</div>
           <div class="muted" style="font-style:italic;font-size:8pt;margin-top:2mm">
-            WhatsApp, AI Vocale, ADS, funnel, coaching operativo del team.
+            Le leve che riducono i tempi tra contatto e contratto. WhatsApp, AI Vocale, ADS, funnel, coaching operativo
+            del team. Si attivano sopra un sistema che ha già le fondamenta in ordine.
           </div>
         </div>
         <div class="box" style="background:var(--mc-black);color:var(--mc-beige)">
           <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.8)">LIVELLO 3</div>
           <div class="display" style="font-size:14pt;margin-top:2mm;font-style:italic">Direzione</div>
           <div class="muted" style="font-style:italic;font-size:8pt;margin-top:2mm;color:rgba(250,248,244,0.7)">
-            La direzione mensile. Senza regia, il sistema muore.
+            Il presidio strategico continuativo. Per chi vuole il sistema commerciale gestito mese dopo mese da chi
+            l'ha costruito, con revisione della pipeline, decisioni prese sui dati e accountability sul team commerciale.
           </div>
         </div>
       </div>
@@ -194,14 +208,14 @@ function renderPage2(quote: QuoteWithRelations) {
           </tr>
           <tr>
             <td style="background:var(--mc-green-bg)"><b>✓</b> Cerchi qualcuno che costruisca il sistema invece di ricostruirlo ogni volta che perdi un venditore.</td>
-            <td style="background:var(--mc-beige-warm)">✗ Cerchi una consulenza a progetto, non una direzione.</td>
+            <td style="background:var(--mc-beige-warm)">✗ Preferisci interventi spot al posto di un sistema replicabile.</td>
           </tr>
           <tr>
             <td style="background:var(--mc-green-bg)"><b>✓</b> Sei disposto a seguire regole scritte (qualifica, pipeline, incentivi).</td>
             <td style="background:var(--mc-beige-warm)">✗ Vuoi risultati prima di aver costruito il sistema.</td>
           </tr>
           <tr>
-            <td style="background:var(--mc-green-bg)"><b>✓</b> Cerchi direzione commerciale, non consulenza a progetto.</td>
+            <td style="background:var(--mc-green-bg)"><b>✓</b> Vuoi un sistema commerciale strutturato, non un singolo intervento spot.</td>
             <td style="background:var(--mc-beige-warm)">✗ Non sei disposto a seguire regole scritte sulla gestione commerciale.</td>
           </tr>
         </tbody>
@@ -273,8 +287,8 @@ function renderPage3(quote: QuoteWithRelations) {
   const cat = categorizeForPage3(quote);
   return `
   <section class="pdf-page">
-    ${pageHeader("03")}
-    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:5mm">Il piano in dettaglio</div>
+    ${pageHeader("05")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:5mm">05 Cosa costruiamo per te</div>
     <div style="font-style:italic;font-size:11pt;margin-bottom:6mm">
       Il piano che segue è costruito sugli anelli che abbiamo visto rotti nella tua azienda.
       Non è un catalogo di servizi da scegliere a piacere. È una sequenza di interventi ordinati per impatto,
@@ -283,21 +297,6 @@ function renderPage3(quote: QuoteWithRelations) {
 
     ${renderItemsTable("SETUP SISTEMA", "Le fondamenta · investimento una tantum", cat.setup)}
     ${renderItemsTable("ACCELERATORI", "Moduli che accorciano i tempi · canoni mensili", cat.acceleratori)}
-    ${renderItemsTable("DIREZIONE E COACHING OPERATIVO", "La direzione · canone mensile", cat.direzione)}
-
-    <div class="no-break box box-warm" style="margin-top:8mm;border:0.5pt solid var(--mc-orange)">
-      <div class="caps orange" style="font-size:9pt">COSA SUCCEDE OGNI MESE NELLA DIREZIONE</div>
-      <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
-        Il prezzo della direzione non paga “essere reperibili”. Paga un ciclo operativo ripetibile, ogni mese, in questa sequenza:
-      </div>
-      <ol style="margin-top:3mm;padding-left:18px">
-        <li><b>Raccolta numeri reali</b> — Lead, chiamate, appuntamenti, preventivi, contratti: tutto dal CRM (e dalle fonti collegate), non “a sensazione”.</li>
-        <li><b>Revisione pipeline e colli di bottiglia</b> — Dove si ferma il flusso questo mese: tempi di risposta, preventivi, follow-up, chiusura, selezione clienti.</li>
-        <li><b>Decisioni di direzione con te (titolare)</b> — 60 minuti: cosa cambiamo ora, cosa tagliamo, cosa raddoppiamo. Un piano d'azione di 30 giorni con priorità chiare.</li>
-        <li><b>Esecuzione guidata su 1–2 leve</b> — Coaching sul gap più costoso e aggiornamento playbook (script, obiezioni, follow-up) con materiale operativo usabile dal team.</li>
-        <li><b>Verifica e accountability</b> — KPI aggiornati nel CRM: a fine mese vediamo se le azioni hanno mosso i numeri. Se non li muovono, si corregge rotta.</li>
-      </ol>
-    </div>
 
     <div class="no-break" style="margin-top:8mm">
       <table>
@@ -339,17 +338,50 @@ function renderPage3(quote: QuoteWithRelations) {
         </tbody>
       </table>
     </div>
+
+    ${renderItemsTable("DIREZIONE E COACHING OPERATIVO", "La direzione · canone mensile", cat.direzione)}
   </section>
   `;
 }
 
-function renderPage4() {
+function renderCosaSuccedeOgniMese() {
+  return `
+  <section class="pdf-page">
+    ${pageHeader("06")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:4mm">06 Cosa succede ogni mese nella direzione</div>
+
+    <div class="no-break box box-warm" style="margin-top:2mm;border:0.5pt solid var(--mc-orange)">
+      <div class="caps orange" style="font-size:9pt">COSA SUCCEDE OGNI MESE NELLA DIREZIONE</div>
+      <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+        Il prezzo della direzione non paga “essere reperibili”. Paga un ciclo operativo ripetibile, ogni mese, in questa sequenza:
+      </div>
+      <ol style="margin-top:3mm;padding-left:18px">
+        <li><b>Raccolta numeri reali</b> — Lead, chiamate, appuntamenti, preventivi, contratti: tutto dal CRM (e dalle fonti collegate), non “a sensazione”.</li>
+        <li><b>Revisione pipeline e colli di bottiglia</b> — Dove si ferma il flusso questo mese: tempi di risposta, preventivi, follow-up, chiusura, selezione clienti.</li>
+        <li><b>Decisioni di direzione con te (titolare)</b> — 60 minuti: cosa cambiamo ora, cosa tagliamo, cosa raddoppiamo. Un piano d'azione di 30 giorni con priorità chiare.</li>
+        <li><b>Esecuzione guidata su 1–2 leve</b> — Coaching sul gap più costoso e aggiornamento playbook (script, obiezioni, follow-up) con materiale operativo usabile dal team.</li>
+        <li><b>Verifica e accountability</b> — KPI aggiornati nel CRM: a fine mese vediamo se le azioni hanno mosso i numeri. Se non li muovono, si corregge rotta.</li>
+      </ol>
+    </div>
+  </section>
+  `;
+}
+
+
+/** Pag. 4 (prima facciata): intro + Remus + Giovanni — il testo completo per Mydatec è su 4b per evitare taglio in PDF (altezza A4 fissa). */
+function renderPage4aTestimonianze() {
   return `
   <section class="pdf-page">
     ${pageHeader("04")}
-    <div class="display" style="font-style:italic;font-size:24pt;margin-bottom:2mm">Hanno scelto Metodo Cantiere</div>
-    <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:8mm">
+    <div class="display" style="font-style:italic;font-size:24pt;margin-bottom:2mm">04 Hanno scelto Metodo Cantiere</div>
+    <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:4mm">
       Imprese che hanno smesso di perdere contratti per inerzia di processo
+    </div>
+
+    <div class="no-break" style="font-size:10pt;margin-bottom:8mm;line-height:1.45">
+      Alcuni dei clienti con cui lavoriamo, su segmenti diversi del settore: manutenzione impianti, edilizia residenziale, B2B industriale premium.
+      Ogni realtà ha portato a casa risultati misurabili lavorando sui propri anelli rotti. Alcuni li seguiamo a livello di metodo e team operativo,
+      altri richiedono un presidio diretto: il segmento decide quale livello di interlocuzione serve.
     </div>
 
     <div class="no-break" style="display:grid;grid-template-columns:26% 74%;gap:10px;margin-bottom:8mm">
@@ -386,10 +418,35 @@ function renderPage4() {
         </div>
       </div>
     </div>
+  </section>
+  `;
+}
 
-    <div class="muted" style="font-style:italic;font-size:9pt;text-align:center;margin-top:8mm">
-      “Metodo Cantiere ha avviato i primi programmi nel primo trimestre 2026. Queste sono due delle prime imprese che hanno scelto il sistema.
-      Ognuna ha portato a casa numeri misurabili nei primi mesi. Una terza realtà, Mydatec, è attualmente in corso con lo sviluppo della rete commerciale B2B.”
+/** Continuazione pag. 4: testimonianza Mydatec (case study consulente) — stesso numero di sezione, facciata dedicata per PDF completo. */
+function renderPage4bMydatec() {
+  return `
+  <section class="pdf-page">
+    ${pageHeader("04")}
+    <div class="display" style="font-style:italic;font-size:24pt;margin-bottom:1mm">04 Hanno scelto Metodo Cantiere</div>
+    <div class="caps muted" style="font-size:7.5pt;letter-spacing:0.2em;margin-bottom:6mm">segue</div>
+
+    <div class="no-break" style="display:grid;grid-template-columns:26% 74%;gap:10px">
+      <div class="box box-warm" style="display:flex;align-items:center;justify-content:center">
+        <div class="display" style="font-style:italic;font-size:22pt;color:var(--mc-orange);letter-spacing:0.02em">B2B</div>
+      </div>
+      <div class="box" style="background:var(--mc-beige)">
+        <div style="font-weight:800;font-size:12pt">Mydatec</div>
+        <div class="muted" style="font-style:italic;font-size:8pt;margin-top:1mm">Pompe di calore con VMC integrata · Italia</div>
+        <div class="muted" style="font-style:italic;font-size:8.5pt;margin-top:3mm;color:var(--mc-muted)">Dal nostro lavoro in corso:</div>
+        <div style="font-size:10.5pt;margin-top:2mm;line-height:1.5">
+          Mydatec è uno dei clienti che seguiamo in prima persona, perché il segmento richiede un livello di interlocuzione che non si delega. Abbiamo lavorato in due tempi.
+          Prima abbiamo studiato una nicchia strategica del loro mercato che nessuno aveva ancora aggredito davvero: i grossi costruttori e i player nazionali dello sviluppo immobiliare,
+          dove un sistema integrato pompa di calore + VMC è scelta tecnica e architetturale, non commodity da listino. Abbiamo capito come compra quel tipo di cliente, chi decide, in che tempi, con quali criteri.
+          Poi abbiamo iniziato a formare la rete vendita con un processo strutturato e ripetibile, fatto di passi chiari e definiti.
+          Non solo perché serviva ai venditori di oggi, ma perché un processo scritto è l'unico modo di inserire nuove figure nel team senza ricominciare da capo ogni volta.
+          Oggi sono nelle prime trattative con player che prima non sapevano nemmeno della loro esistenza.
+        </div>
+      </div>
     </div>
   </section>
   `;
@@ -425,9 +482,13 @@ function renderPage5(quote: QuoteWithRelations) {
   }
 
   let perditaContratti: number | null = null;
+  let voce1ChiusiLabel: string | null = null;
   if (hasRoiData && preventiviMese != null && importoMedio != null && conv != null && marg != null) {
     const preventiviAnnui = preventiviMese * 12;
     const contrattiChiusi = preventiviAnnui * (conv / 100);
+    if (contrattiChiusi < 1) voce1ChiusiLabel = "meno di 1";
+    else if (contrattiChiusi < 3) voce1ChiusiLabel = "1-2";
+    else voce1ChiusiLabel = String(Math.round(contrattiChiusi));
     const contrattiPersiRecuperabili = (preventiviAnnui - contrattiChiusi) * 0.5 * 0.15;
     const margineMedio = importoMedio * (marg / 100);
     perditaContratti = contrattiPersiRecuperabili * margineMedio;
@@ -435,8 +496,8 @@ function renderPage5(quote: QuoteWithRelations) {
 
   return `
   <section class="pdf-page">
-    ${pageHeader("05")}
-    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">Ritorno e danno evitato</div>
+    ${pageHeader("03")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">03 Ritorno e danno evitato</div>
     <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:6mm">
       Due facce dello stesso conto: cosa puoi guadagnare costruendo il sistema, cosa stai perdendo ogni mese che resta tutto così
     </div>
@@ -497,17 +558,17 @@ function renderPage5(quote: QuoteWithRelations) {
         <div style="font-weight:800;font-size:11pt">1) Contratti regalati ai competitor per inerzia di processo</div>
         <div style="font-size:10pt;margin-top:1mm">
           ${
-            preventiviMese != null && conv != null
-              ? `Dei <b>${escapeHtml(String(preventiviMese * 12))}</b> preventivi annui che invii, l'<b>${escapeHtml(
-                  String(Math.max(0, 100 - conv))
-                )}</b>% oggi non si chiude.`
-              : `Dei preventivi annui che invii, una parte oggi non si chiude.`
+            preventiviMese != null && conv != null && voce1ChiusiLabel != null
+              ? `Dei <b>${escapeHtml(String(preventiviMese * 12))}</b> preventivi annui che invii, oggi si chiudono in <b>${escapeHtml(
+                  voce1ChiusiLabel
+                )}</b> (conversione del <b>${escapeHtml(String(conv))}</b>%). Una parte significativa degli altri è recuperabile con follow-up strutturato e regole CRM.`
+              : `Dei preventivi annui che invii, oggi una parte resta fuori conversione. Una parte significativa degli altri è recuperabile con follow-up strutturato e regole CRM.`
           }
-          Stima prudente: una quota è recuperabile con follow-up strutturato e regole CRM.
         </div>
         ${
           perditaContratti != null
-            ? `<div style="margin-top:1mm;font-weight:800;color:var(--mc-red)">Perdita stimata: ${escapeHtml(
+            ? `<div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">Stima prudente:</div>
+        <div style="margin-top:1mm;font-weight:800;color:var(--mc-red)">Perdita stimata: ${escapeHtml(
                 formatEuro(Math.round(perditaContratti))
               )}/anno</div>`
             : ""
@@ -562,16 +623,15 @@ function renderPage6(quote: QuoteWithRelations) {
   const crmAnnualDiscount = hasCrmAnnualPrepay ? Math.round(crmAnnualFull * 0.2) : 0;
   const crmAnnualNet = hasCrmAnnualPrepay ? crmAnnualFull - crmAnnualDiscount : 0;
 
-  const creditoAcceleratori = Math.round(quote.totalSetup * 0.1);
   const direttoreCosto = escapeHtml(formatEuro(primoAnnoCompleto));
-  const stripeSetupSconto = Math.round(quote.totalSetup * 0.97);
+  const stripeSetupSconto = Math.round(setupTotals.totalSetup * 0.97);
   const anticipatoSconto = Math.round(primoAnnoCompleto * 0.95);
   const discountLabel = getDiscountLabel(quote);
 
   return `
   <section class="pdf-page">
-    ${pageHeader("06")}
-    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:6mm">Riepilogo economico</div>
+    ${pageHeader("07")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:6mm">07 Riepilogo economico</div>
 
     <div class="no-break box box-black">
       <table style="border-collapse:collapse">
@@ -693,14 +753,16 @@ function renderPage6(quote: QuoteWithRelations) {
       </div>
     </div>
 
-    <div class="no-break box box-green" style="margin-top:8mm">
-      <div class="caps" style="font-size:9pt;color:var(--mc-green)">IN PIÙ: CREDITO ACCELERATORI · 10% del Setup</div>
-      <div style="margin-top:2mm;font-weight:800;color:var(--mc-green)">
-        Sul tuo piano: ${escapeHtml(formatEuro(creditoAcceleratori))}
+    <div class="no-break box box-green" style="margin-top:8mm;padding:4mm 5mm">
+      <div class="caps" style="font-size:9.5pt;font-weight:800;color:#2D7A3E;letter-spacing:0.04em">
+        HAI UN CREDITO DI ${escapeHtml(formatEuro(setupTotals.creditoMetodoCantiere))}
       </div>
-      <div style="margin-top:2mm;font-size:10pt">
-        Quando firmi il piano, attiviamo un credito pari al 10% dell'investimento Setup, spendibile sui moduli Acceleratori entro 12 mesi.
-        Non è uno sconto sul prezzo del piano. È un'estensione del valore che ti restituiamo per partire più completo.
+      <div style="margin-top:2mm;font-size:9.5pt;color:var(--mc-muted)">spendibile nei prossimi 12 mesi su nuovi acquisti</div>
+      <div style="margin-top:3mm;font-size:9pt;line-height:1.45;color:var(--mc-black)">
+        Quando deciderai di aggiungere altri moduli al sistema
+        — AI Vocale Personalizzato, Bundle Multicanale, oppure
+        la Direzione mensile per il presidio strategico —
+        il Credito MC scala dall'investimento.
       </div>
     </div>
 
@@ -807,8 +869,8 @@ function renderPage7(quote: QuoteWithRelations) {
   const { primary } = getClientDisplayName(quote);
   return `
   <section class="pdf-page">
-    ${pageHeader("07")}
-    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">Per partire davvero</div>
+    ${pageHeader("08")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">08 Per partire davvero</div>
     <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:6mm">
       Cosa serve da parte tua, e cosa succede dalla firma in poi
     </div>
@@ -916,9 +978,11 @@ export function generateTemplate(quote: QuoteWithRelations): string {
   <body>
     ${renderCover(quote)}
     ${renderPage2(quote)}
-    ${renderPage3(quote)}
-    ${renderPage4()}
     ${renderPage5(quote)}
+    ${renderPage4aTestimonianze()}
+    ${renderPage4bMydatec()}
+    ${renderPage3(quote)}
+    ${renderCosaSuccedeOgniMese()}
     ${renderPage6(quote)}
     ${renderPage7(quote)}
   </body>

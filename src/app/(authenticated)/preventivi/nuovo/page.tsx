@@ -367,7 +367,12 @@ export default function NuovoPreventivoPage() {
             discountLabel: "" as string,
           };
 
-    const setupNet = Math.max(0, setupAfterVoucher - chosen.discountAmount);
+    const isVolume =
+      chosen.discountType === "volume_5" || chosen.discountType === "volume_10";
+    const setupNet = Math.max(
+      0,
+      setupAfterVoucher - (isVolume ? 0 : chosen.discountAmount)
+    );
     const oneTimeTotal = setupNet + baseTotals.prepaidCrm + baseTotals.prepaidAi + baseTotals.prepaidWa;
     const annualTotal = oneTimeTotal + baseTotals.monthlyAfterPrepay * 12;
 
@@ -1333,22 +1338,43 @@ export default function NuovoPreventivoPage() {
                 </div>
               )}
 
-              {totals.discountAmount > 0 && (
-                <div className="flex justify-between" style={{ color: "var(--mc-success)" }}>
-                  <span className="text-xs">
-                    {totals.discountType === "manual"
-                      ? `Codice ${totals.discountCode || ""}`.trim()
-                      : totals.volumeDiscount?.label || "Sconto"}
-                  </span>
-                  <span className="font-semibold text-xs tabular-nums">
-                    −{formatEuro(totals.discountAmount)}
-                  </span>
-                </div>
-              )}
+              {totals.discountAmount > 0 &&
+                totals.discountType !== "volume_5" &&
+                totals.discountType !== "volume_10" && (
+                  <div className="flex justify-between" style={{ color: "var(--mc-success)" }}>
+                    <span className="text-xs">
+                      {totals.discountType === "manual"
+                        ? `Codice ${totals.discountCode || ""}`.trim()
+                        : totals.volumeDiscount?.label || "Sconto"}
+                    </span>
+                    <span className="font-semibold text-xs tabular-nums">
+                      −{formatEuro(totals.discountAmount)}
+                    </span>
+                  </div>
+                )}
 
-              {totals.discountAmount > 0 && (
+              {(totals.discountType === "volume_5" || totals.discountType === "volume_10") &&
+                totals.discountAmount > 0 && (
+                  <div className="flex justify-between" style={{ color: "var(--mc-text-secondary)" }}>
+                    <span className="text-xs">Credito MC (10% sul setup, 12 mesi)</span>
+                    <span className="font-semibold text-xs tabular-nums" style={{ color: "var(--mc-success)" }}>
+                      {formatEuro(Math.round(totals.setupAfterVoucher * 0.1))}
+                    </span>
+                  </div>
+                )}
+
+              {totals.discountAmount > 0 &&
+                totals.discountType !== "volume_5" &&
+                totals.discountType !== "volume_10" && (
+                  <div className="flex justify-between">
+                    <span style={{ color: "var(--mc-text-secondary)" }}>Setup dopo sconto</span>
+                    <span className="font-semibold tabular-nums">{formatEuro(totals.setupNet)}</span>
+                  </div>
+                )}
+
+              {(totals.discountType === "volume_5" || totals.discountType === "volume_10") && (
                 <div className="flex justify-between">
-                  <span style={{ color: "var(--mc-text-secondary)" }}>Setup dopo sconto</span>
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Totale setup</span>
                   <span className="font-semibold tabular-nums">{formatEuro(totals.setupNet)}</span>
                 </div>
               )}

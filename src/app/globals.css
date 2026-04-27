@@ -706,13 +706,15 @@ html[data-theme="dark"] .theme-toggle-thumb {
   display: inline-flex;
   align-items: center;
   line-height: 0;
+  height: var(--mc-logo-h, 34px);
 }
 
 .mc-brand-logo__light,
 .mc-brand-logo__dark {
-  height: auto;
+  display: block;
+  height: 100%;
   width: auto;
-  max-height: 34px;
+  max-height: none;
 }
 
 .mc-brand-logo__dark {

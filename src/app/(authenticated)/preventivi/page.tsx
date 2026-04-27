@@ -13,29 +13,50 @@ type Quote = {
   totalMonthly: number;
   totalAnnual: number;
   status: string;
-  expiresAt: string;
+  expiresAt: string | null;
   createdAt: string;
   user: { name: string };
   items: { id: string }[];
 };
 
-const statusLabels: Record<string, { label: string; class: string }> = {
-  pending: { label: "In attesa", class: "badge-pending" },
-  inviato: { label: "Inviato", class: "badge-sent" },
-  accettato: { label: "Accettato", class: "badge-accepted" },
-  rifiutato: { label: "Rifiutato", class: "badge-rejected" },
-  scaduto: { label: "Scaduto", class: "badge-expired" },
+const statusLabels: Record<
+  string,
+  { label: string; class: string; style?: React.CSSProperties }
+> = {
+  draft: {
+    label: "Bozza",
+    class: "",
+    style: {
+      background: "rgba(148,163,184,0.16)",
+      color: "var(--mc-text-secondary)",
+      borderColor: "rgba(148,163,184,0.45)",
+    },
+  },
+  sent: {
+    label: "Inviato",
+    class: "badge-sent",
+    style: {
+      background: "rgba(255,106,0,0.14)",
+      color: "#FF6A00",
+      borderColor: "rgba(255,106,0,0.35)",
+    },
+  },
+  viewed: {
+    label: "Visualizzato",
+    class: "",
+    style: {
+      background: "rgba(34,197,94,0.14)",
+      color: "var(--mc-success)",
+      borderColor: "rgba(34,197,94,0.35)",
+    },
+  },
 };
 
 const filterTabs = [
   { value: "all", label: "Tutti" },
-  { value: "open", label: "Aperti" },
-  { value: "pending", label: "In attesa" },
-  { value: "inviato", label: "Inviati" },
-  { value: "expiring", label: "In scadenza" },
-  { value: "accettato", label: "Accettati" },
-  { value: "rifiutato", label: "Rifiutati" },
-  { value: "scaduto", label: "Scaduti" },
+  { value: "draft", label: "Bozze" },
+  { value: "sent", label: "Inviati" },
+  { value: "viewed", label: "Visualizzati" },
 ];
 
 function formatEuro(value: number) {
@@ -84,11 +105,6 @@ export default function PreventiviPage() {
 
   function matchesFilter(quote: Quote) {
     if (filter === "all") return true;
-    if (filter === "open") return quote.status === "pending" || quote.status === "inviato";
-    if (filter === "expiring") {
-      const d = daysUntil(quote.expiresAt);
-      return (quote.status === "pending" || quote.status === "inviato") && d <= 7 && d >= 0;
-    }
     return quote.status === filter;
   }
 
@@ -107,35 +123,19 @@ export default function PreventiviPage() {
 
   // Stats: ora con valori in € (NUOVO v1.4)
   const stats = useMemo(() => {
-    const inAttesaQuotes = quotes.filter(
-      (q) => q.status === "pending" || q.status === "inviato"
-    );
-    const inScadenzaQuotes = quotes.filter(
-      (q) =>
-        (q.status === "pending" || q.status === "inviato") &&
-        daysUntil(q.expiresAt) <= 7 &&
-        daysUntil(q.expiresAt) >= 0
-    );
-    const acquisitiQuotes = quotes.filter((q) => q.status === "accettato");
-    const rifiutatiQuotes = quotes.filter((q) => q.status === "rifiutato");
+    const draftQuotes = quotes.filter((q) => q.status === "draft");
+    const sentQuotes = quotes.filter((q) => q.status === "sent");
+    const viewedQuotes = quotes.filter((q) => q.status === "viewed");
 
     return {
       total: quotes.length,
       totalValue: quotes.reduce((sum, q) => sum + q.totalAnnual, 0),
-      inAttesaCount: inAttesaQuotes.length,
-      inAttesaValue: inAttesaQuotes.reduce((sum, q) => sum + q.totalAnnual, 0),
-      inScadenzaCount: inScadenzaQuotes.length,
-      inScadenzaValue: inScadenzaQuotes.reduce(
-        (sum, q) => sum + q.totalAnnual,
-        0
-      ),
-      acquisitiCount: acquisitiQuotes.length,
-      acquisitiValue: acquisitiQuotes.reduce(
-        (sum, q) => sum + q.totalAnnual,
-        0
-      ),
-      rifiutatiCount: rifiutatiQuotes.length,
-      rifiutatiValue: rifiutatiQuotes.reduce((sum, q) => sum + q.totalAnnual, 0),
+      draftCount: draftQuotes.length,
+      draftValue: draftQuotes.reduce((sum, q) => sum + q.totalAnnual, 0),
+      sentCount: sentQuotes.length,
+      sentValue: sentQuotes.reduce((sum, q) => sum + q.totalAnnual, 0),
+      viewedCount: viewedQuotes.length,
+      viewedValue: viewedQuotes.reduce((sum, q) => sum + q.totalAnnual, 0),
     };
   }, [quotes]);
 
@@ -197,91 +197,56 @@ export default function PreventiviPage() {
         <button
           type="button"
           className="stat-card text-left"
-          onClick={() => setFilter("open")}
-          style={cardStyle(filter === "open")}
+          onClick={() => setFilter("draft")}
+          style={cardStyle(filter === "draft")}
         >
-          <div className="stat-label">In attesa</div>
-          <div className="stat-value">{formatEuro(stats.inAttesaValue)}</div>
+          <div className="stat-label">Bozze</div>
+          <div className="stat-value">{formatEuro(stats.draftValue)}</div>
           <div className="stat-sub">
-            {stats.inAttesaCount}{" "}
-            {stats.inAttesaCount === 1 ? "preventivo aperto" : "preventivi aperti"}
+            {stats.draftCount} {stats.draftCount === 1 ? "bozza" : "bozze"}
           </div>
         </button>
 
         <button
           type="button"
           className="stat-card text-left"
-          onClick={() => setFilter("expiring")}
-          style={{
-            ...(stats.inScadenzaCount > 0
-              ? { borderColor: "var(--mc-accent)", background: "var(--mc-accent-soft)" }
-              : undefined),
-            ...(filter === "expiring" ? cardStyle(true) : undefined),
-          }}
+          onClick={() => setFilter("sent")}
+          style={cardStyle(filter === "sent")}
         >
-          <div
-            className="stat-label"
-            style={{
-              color: stats.inScadenzaCount > 0 ? "var(--mc-accent)" : undefined,
-            }}
-          >
-            In scadenza
+          <div className="stat-label" style={{ color: "#FF6A00" }}>
+            Inviati
           </div>
-          <div
-            className="stat-value"
-            style={{
-              color: stats.inScadenzaCount > 0 ? "var(--mc-accent)" : undefined,
-            }}
-          >
-            {formatEuro(stats.inScadenzaValue)}
+          <div className="stat-value" style={{ color: "#FF6A00" }}>
+            {formatEuro(stats.sentValue)}
           </div>
           <div className="stat-sub">
-            {stats.inScadenzaCount}{" "}
-            {stats.inScadenzaCount === 1 ? "preventivo" : "preventivi"} entro 7gg
+            {stats.sentCount} {stats.sentCount === 1 ? "preventivo" : "preventivi"}
           </div>
         </button>
 
         <button
           type="button"
           className="stat-card text-left"
-          onClick={() => setFilter("accettato")}
-          style={cardStyle(filter === "accettato", "success")}
+          onClick={() => setFilter("viewed")}
+          style={cardStyle(filter === "viewed", "success")}
         >
           <div className="stat-label" style={{ color: "var(--mc-success)" }}>
-            Acquisito
+            Visualizzati
           </div>
           <div className="stat-value" style={{ color: "var(--mc-success)" }}>
-            {formatEuro(stats.acquisitiValue)}
+            {formatEuro(stats.viewedValue)}
           </div>
           <div className="stat-sub">
-            {stats.acquisitiCount}{" "}
-            {stats.acquisitiCount === 1 ? "preventivo accettato" : "preventivi accettati"}
+            {stats.viewedCount}{" "}
+            {stats.viewedCount === 1 ? "preventivo" : "preventivi"}
           </div>
         </button>
 
-        <button
-          type="button"
-          className="stat-card text-left"
-          onClick={() => setFilter("rifiutato")}
-          style={cardStyle(filter === "rifiutato", "danger")}
-        >
-          <div
-            className="stat-label"
-            style={{ color: "var(--mc-danger, #b91c1c)" }}
-          >
-            Rifiutato
-          </div>
-          <div
-            className="stat-value"
-            style={{ color: "var(--mc-danger, #b91c1c)" }}
-          >
-            {formatEuro(stats.rifiutatiValue)}
-          </div>
-          <div className="stat-sub">
-            {stats.rifiutatiCount}{" "}
-            {stats.rifiutatiCount === 1 ? "preventivo rifiutato" : "preventivi rifiutati"}
-          </div>
-        </button>
+        <div className="stat-card text-left" style={{ opacity: 0.6 }}>
+          <div className="stat-label">Tipi</div>
+          <div className="stat-value">{stats.draftCount + stats.sentCount + stats.viewedCount}</div>
+          <div className="stat-sub">Bozze · Inviati · Visualizzati</div>
+        </div>
       </div>
 
       {/* Toolbar filtri + ricerca */}
@@ -429,11 +394,9 @@ export default function PreventiviPage() {
               </thead>
               <tbody>
                 {filteredQuotes.map((q) => {
-                  const days = daysUntil(q.expiresAt);
+                  const days = q.expiresAt ? daysUntil(q.expiresAt) : null;
                   const isExpiring =
-                    (q.status === "pending" || q.status === "inviato") &&
-                    days <= 7 &&
-                    days >= 0;
+                    q.status === "sent" && days != null && days <= 7 && days >= 0;
                   return (
                     <tr
                       key={q.id}
@@ -465,7 +428,7 @@ export default function PreventiviPage() {
                       </td>
                       <td className="text-sm">
                         <div style={{ color: "var(--mc-text-secondary)" }}>
-                          {formatDate(q.expiresAt)}
+                          {q.expiresAt ? formatDate(q.expiresAt) : "—"}
                         </div>
                         {isExpiring && (
                           <div
@@ -491,8 +454,9 @@ export default function PreventiviPage() {
                       <td>
                         <span
                           className={`badge ${
-                            statusLabels[q.status]?.class || "badge-pending"
+                            statusLabels[q.status]?.class || ""
                           }`}
+                          style={statusLabels[q.status]?.style}
                         >
                           <span className="badge-dot" />
                           {statusLabels[q.status]?.label || q.status}

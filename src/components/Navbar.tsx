@@ -72,7 +72,7 @@ export function Navbar() {
         <div className="flex items-center justify-between h-14">
           {/* Brand */}
           <Link href="/preventivi" className="flex items-center gap-3 group">
-            <BrandLogo className="hidden sm:inline-flex" size="md" priority />
+            <BrandLogo className="hidden sm:inline-flex" size="md" priority variant="always-dark" />
             <div
               className="sm:hidden w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm"
               style={{

@@ -1,13 +1,8 @@
-// Schema Prisma per Preventivatore Metodo Cantiere
-// Documentazione: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  // SQLite per sviluppo locale - nessuna installazione richiesta
-  // In produzione su Vercel si usa Postgres: cambiare provider a "postgresql"
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
@@ -17,7 +12,7 @@ model User {
   email     String   @unique
   password  String
   name      String
-  role      String   @default("commerciale") // "admin" o "commerciale"
+  role      String   @default("commerciale")
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -25,141 +20,111 @@ model User {
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  code        String   @unique // es. "m0101", "AUDIT_LAMPO"
-  name        String
-  block       String // "FRONTEND", "01", "02", "03", "04", "06", "07", "MEGABUNDLE", "CANONI_CRM", "CANONI_AIVOCALE", "CANONI_WA", "ADS_GESTITE", "DCE"
-  type        String // "product", "variant", "bundle", "canone"
-  positioning String // frase di posizionamento (1 riga)
-  includes    String // JSON array di stringhe (cosa include)
-  objection   String? // obiezione attesa
-  response    String? // risposta all'obiezione
-  price       Int // prezzo in euro interi
-  priceLabel  String? // per casi speciali come "€2.497 + €1.500" (reclutamento)
-  isMonthly   Boolean  @default(false) // canone mensile
-  isRecurring Boolean  @default(false) // servizio ricorrente calcolato
-  prerequisites String? // JSON array di codici prodotto richiesti (es. AI Inbound richiede AI Base o Personalizzato)
-  bundleItems String? // JSON array di codici prodotto se è bundle
-  active      Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  diagnosiPeso Float   @default(0) // 0–100: quota “diagnosi” sul prezzo per il calcolo ROI
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Preventivi che usano questo prodotto come DCE selezionata
-  quotesAsDce Quote[]  @relation("QuoteDceProduct")
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  block         String
+  type          String
+  positioning   String
+  includes      String
+  objection     String?
+  response      String?
+  price         Int
+  priceLabel    String?
+  isMonthly     Boolean  @default(false)
+  isRecurring   Boolean  @default(false)
+  prerequisites String?
+  bundleItems   String?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  diagnosiPeso  Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  quotesAsDce   Quote[]  @relation("QuoteDceProduct")
 }
 
 model RoiConfig {
-  id                     String   @id // valore fisso "singleton"
-  defaultPreventiviMese  Float    @default(4)
-  defaultImportoMedio    Float    @default(5000)
-  defaultConversione   Float    @default(25)
-  defaultMargine         Float    @default(20)
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                    String   @id
+  defaultPreventiviMese Float    @default(4)
+  defaultImportoMedio   Float    @default(5000)
+  defaultConversione    Float    @default(25)
+  defaultMargine        Float    @default(20)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model Quote {
-  id              String      @id @default(cuid())
-  quoteNumber     String      @unique // numero leggibile tipo "Q2026-0001"
-  userId          String
-  user            User        @relation(fields: [userId], references: [id])
-
-  // Direzione Commerciale Esterna (DCE) — deve puntare a un prodotto a listino (FK)
-  dceProductId    String?
-  dceProduct      Product?    @relation("QuoteDceProduct", fields: [dceProductId], references: [id])
-
-  // Dati cliente
-  clientName      String
-  clientCompany   String?
-  clientEmail     String?
-  clientPhone     String?
-  clientNotes     String?
-  crmCustomerId   String? // id nel CRM Metodo Cantiere (per sincronizzazione futura)
-
-  // Indirizzo cliente (NUOVI v1.4 — popolati da CRM o inseriti a mano)
-  clientAddress    String? // via e numero civico
-  clientPostalCode String? // CAP
-  clientCity       String? // città/comune
-  clientProvince   String? // provincia (es. "BG")
-
-  // Diagnosi & ROI (v1.5)
-  originCliente          String?
-  estrattoDiagnosi       String?
-  diagnosiGiaPagata      Boolean @default(true) // voucher diagnostica già versata (−497€) se true
-  roiPreventiviMese      Float?
-  roiImportoMedio        Float?
-  roiConversioneAttuale  Float?
-  roiMargineCommessa     Float?
-  roiSnapshot            String? // JSON: valori congelati al salvataggio
-
-  // Dati fiscali per fatturazione
-  clientVat       String? // Partita IVA
-  clientSdi       String? // Codice univoco SDI
-
-  // Totali (importi finali, dopo sconti)
-  totalSetup      Int // totale setup una tantum in euro (DOPO sconto)
-  totalMonthly    Int // totale canoni mensili in euro
-  totalAnnual     Int // totale canoni annuali (con sconto 20% CRM applicato SOLO ai canoni CRM)
-
-  // Dati sconto (per audit e visualizzazione nel dettaglio)
-  setupBeforeDiscount Int @default(0) // setup PRIMA dello sconto applicato
-  discountType    String? // "volume_5", "volume_10", "manual", "voucher_audit", null
-  discountAmount  Int     @default(0) // importo dello sconto in euro
-  discountCode    String? // codice manuale inserito (es. "AMICO-15")
-  discountPercent Int     @default(0) // percentuale sconto applicata
-  scontoCrmAnnuale Boolean @default(true) // se applicato sconto 20% pagamento annuale CRM
-  scontoAiVocaleAnnuale Boolean @default(false) // se applicato sconto 15% pagamento annuale AI Vocale (NUOVO v1.4)
-  scontoWaAnnuale Boolean @default(false) // se applicato sconto 15% pagamento annuale WhatsApp (NUOVO v1.4)
-
-  // Voucher Audit Lampo
-  voucherAuditApplied Boolean @default(false) // se applicato il voucher €147 dell'Audit Lampo
-
-  // Stato preventivo
-  status          String   @default("pending") // pending, inviato, accettato, rifiutato, scaduto
-  expiresAt       DateTime
-
-  // Note commerciali
-  notes           String?
-
-  // Relazioni
-  items           QuoteItem[]
-
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                    String      @id @default(cuid())
+  quoteNumber           String      @unique
+  userId                String
+  dceProductId          String?
+  clientName            String
+  clientCompany         String?
+  clientEmail           String?
+  clientPhone           String?
+  clientNotes           String?
+  crmCustomerId         String?
+  clientAddress         String?
+  clientPostalCode      String?
+  clientCity            String?
+  clientProvince        String?
+  originCliente         String?
+  estrattoDiagnosi      String?
+  diagnosiGiaPagata     Boolean     @default(true)
+  roiPreventiviMese     Float?
+  roiImportoMedio       Float?
+  roiConversioneAttuale Float?
+  roiMargineCommessa    Float?
+  roiSnapshot           String?
+  clientVat             String?
+  clientSdi             String?
+  totalSetup            Int
+  totalMonthly          Int
+  totalAnnual           Int
+  setupBeforeDiscount   Int         @default(0)
+  discountType          String?
+  discountAmount        Int         @default(0)
+  discountCode          String?
+  discountPercent       Int         @default(0)
+  scontoCrmAnnuale      Boolean     @default(true)
+  scontoAiVocaleAnnuale Boolean     @default(false)
+  scontoWaAnnuale       Boolean     @default(false)
+  voucherAuditApplied   Boolean     @default(false)
+  status                String      @default("draft")
+  sentAt                DateTime?
+  viewedAt              DateTime?
+  expiresAt             DateTime?
+  notes                 String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  dceProduct            Product?    @relation("QuoteDceProduct", fields: [dceProductId], references: [id])
+  user                  User        @relation(fields: [userId], references: [id])
+  items                 QuoteItem[]
 }
 
 model QuoteItem {
   id          String   @id @default(cuid())
   quoteId     String
-  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-
-  productCode String // code del prodotto selezionato
-  productName String // snapshot del nome al momento della selezione
-  price       Int // snapshot del prezzo al momento della selezione
+  productCode String
+  productName String
+  price       Int
   quantity    Int      @default(1)
   isMonthly   Boolean  @default(false)
   notes       String?
-
   createdAt   DateTime @default(now())
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 }
 
-// Codici sconto manuali (gestiti da admin)
-// Esempi: "AMICO-15", "BLACKFRIDAY-20", "VIP-10"
 model DiscountCode {
-  id              String   @id @default(cuid())
-  code            String   @unique // es. "AMICO-15"
-  description     String?  // a cosa serve
-  // Uno dei due deve essere > 0:
-  // - discountPercent: sconto percentuale sul setup (es. 15 per -15%)
-  // - discountAmount: sconto fisso in euro sul setup (es. 500 per -500€)
-  discountPercent Int      @default(0)
-  discountAmount  Int      @default(0)
-  maxUses         Int?     // se null = illimitato
-  usedCount       Int      @default(0)
-  expiresAt       DateTime? // se null = non scade
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id              String    @id @default(cuid())
+  code            String    @unique
+  description     String?
+  discountPercent Int       @default(0)
+  discountAmount  Int       @default(0)
+  maxUses         Int?
+  usedCount       Int       @default(0)
+  expiresAt       DateTime?
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }

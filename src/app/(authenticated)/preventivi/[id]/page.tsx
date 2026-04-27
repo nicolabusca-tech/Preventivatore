@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { parseRoiSnapshot } from "@/lib/roi";
+import { QuoteEditor, type QuoteEditorInitialData } from "@/components/QuoteEditor";
 
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 const DIAGNOSI_VOUCHER_AMOUNT = 497;
@@ -46,7 +47,9 @@ type QuoteDetail = {
   scontoWaAnnuale: boolean;
   voucherAuditApplied: boolean;
   status: string;
-  expiresAt: string;
+  sentAt: string | null;
+  viewedAt: string | null;
+  expiresAt: string | null;
   createdAt: string;
   user: { name: string; email: string };
   items: {
@@ -58,14 +61,6 @@ type QuoteDetail = {
     isMonthly: boolean;
   }[];
 };
-
-const statusOptions = [
-  { value: "pending", label: "In attesa", class: "badge-pending" },
-  { value: "inviato", label: "Inviato al cliente", class: "badge-sent" },
-  { value: "accettato", label: "Accettato", class: "badge-accepted" },
-  { value: "rifiutato", label: "Rifiutato", class: "badge-rejected" },
-  { value: "scaduto", label: "Scaduto", class: "badge-expired" },
-];
 
 const discountTypeLabels: Record<string, string> = {
   volume_5: "Sconto volume 5% (3+ moduli)",
@@ -115,7 +110,6 @@ export default function DettaglioPreventivoPage() {
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -152,21 +146,6 @@ export default function DettaglioPreventivoPage() {
       alive = false;
     };
   }, [id]);
-
-  async function updateStatus(newStatus: string) {
-    if (!quote) return;
-    setUpdating(true);
-    const res = await fetch(`/api/quotes/${quote.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
-    if (res.ok) {
-      const updated = (await res.json()) as QuoteDetail;
-      setQuote(updated);
-    }
-    setUpdating(false);
-  }
 
   if (loading) {
     return (
@@ -216,16 +195,102 @@ export default function DettaglioPreventivoPage() {
     );
   }
 
+  if (quote.status === "draft") {
+    const initial: QuoteEditorInitialData = {
+      id: quote.id,
+      status: quote.status,
+      clientName: quote.clientName,
+      clientCompany: quote.clientCompany,
+      clientEmail: quote.clientEmail,
+      clientPhone: quote.clientPhone,
+      clientNotes: quote.clientNotes,
+      crmCustomerId: quote.crmCustomerId,
+      clientAddress: quote.clientAddress,
+      clientPostalCode: quote.clientPostalCode,
+      clientCity: quote.clientCity,
+      clientProvince: quote.clientProvince,
+      clientVat: quote.clientVat,
+      clientSdi: quote.clientSdi,
+      originCliente: quote.originCliente,
+      estrattoDiagnosi: quote.estrattoDiagnosi,
+      diagnosiGiaPagata: quote.diagnosiGiaPagata,
+      roiPreventiviMese: quote.roiPreventiviMese,
+      roiImportoMedio: quote.roiImportoMedio,
+      roiConversioneAttuale: quote.roiConversioneAttuale,
+      roiMargineCommessa: quote.roiMargineCommessa,
+      roiSnapshot: quote.roiSnapshot,
+      notes: quote.notes,
+      expiresAt: quote.expiresAt,
+      voucherAuditApplied: quote.voucherAuditApplied,
+      scontoCrmAnnuale: quote.scontoCrmAnnuale,
+      scontoAiVocaleAnnuale: quote.scontoAiVocaleAnnuale,
+      scontoWaAnnuale: quote.scontoWaAnnuale,
+      discountType: quote.discountType,
+      discountAmount: quote.discountAmount,
+      discountCode: quote.discountCode,
+      discountPercent: quote.discountPercent,
+      items: quote.items.map((it) => ({
+        productCode: it.productCode,
+        quantity: it.quantity,
+        price: it.price,
+        isMonthly: it.isMonthly,
+        productName: it.productName,
+      })),
+    };
+
+    return (
+      <div className="animate-fade-in">
+        <div className="mb-7">
+          <Link
+            href="/preventivi"
+            className="inline-flex items-center gap-1 text-xs font-semibold mb-3 hover:underline"
+            style={{ color: "var(--mc-text-secondary)" }}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden="true"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+            Torna ai preventivi
+          </Link>
+          <h1 className="text-4xl mb-1">Bozza {quote.quoteNumber}</h1>
+          <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
+            Tutto editabile finché resta in bozza.
+          </p>
+        </div>
+
+        <QuoteEditor initial={initial} />
+      </div>
+    );
+  }
+
   const setupLineItems = quote.items.filter(
     (i) =>
       !i.isMonthly && !(quote.diagnosiGiaPagata && i.productCode === DIAGNOSI_CODE)
   );
   const monthlyItems = quote.items.filter((i) => i.isMonthly);
-  const currentStatus = statusOptions.find((s) => s.value === quote.status);
-  const statusOptionsForUpdate = statusOptions.filter((s) => s.value !== "scaduto");
   const fullAddress = buildFullAddress(quote);
   const roiSnap = parseRoiSnapshot(quote.roiSnapshot);
   const showSetupSection = setupLineItems.length > 0 || quote.diagnosiGiaPagata;
+
+  const statusBadge = (() => {
+    if (quote.status === "sent") return { label: "Inviato", class: "badge-sent" };
+    if (quote.status === "viewed") return { label: "Visualizzato", class: "badge-accepted" };
+    return { label: quote.status, class: "" };
+  })();
+
+  const bannerText = (() => {
+    if (quote.status === "sent") return quote.sentAt ? `Inviato il ${formatDateTime(quote.sentAt)}` : "Inviato";
+    if (quote.status === "viewed") return quote.viewedAt ? `Visualizzato il ${formatDateTime(quote.viewedAt)}` : "Visualizzato";
+    return null;
+  })();
 
   return (
     <div className="animate-fade-in">
@@ -271,20 +336,34 @@ export default function DettaglioPreventivoPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {currentStatus && (
-              <span className={`badge ${currentStatus.class} text-sm px-3 py-1.5`}>
-                <span className="badge-dot" />
-                {currentStatus.label}
-              </span>
-            )}
-            <a
-              href={`/api/quotes/${quote.id}/pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-primary text-sm"
-            >
-              Scarica PDF Piano Operativo
+            <span className={`badge ${statusBadge.class} text-sm px-3 py-1.5`}>
+              <span className="badge-dot" />
+              {statusBadge.label}
+            </span>
+            <a href={`/api/quotes/${quote.id}/pdf`} className="btn-secondary text-sm">
+              Scarica PDF
             </a>
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              onClick={async () => {
+                const ok = window.confirm("Duplicare questo preventivo come nuova bozza?");
+                if (!ok) return;
+                const res = await fetch("/api/quotes/duplicate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ quoteId: quote.id }),
+                });
+                const body = await res.json().catch(() => null);
+                if (res.ok && body?.id) {
+                  window.location.href = `/preventivi/${body.id}`;
+                } else {
+                  alert((body && body.error) || "Errore duplicazione bozza");
+                }
+              }}
+            >
+              Duplica come nuova bozza
+            </button>
           </div>
         </div>
 
@@ -303,6 +382,15 @@ export default function DettaglioPreventivoPage() {
           )}
         </div>
       </div>
+
+      {bannerText && (
+        <div className="mb-5 alert alert-success">
+          <span className="text-sm font-semibold">{bannerText}</span>
+          <span className="text-xs" style={{ opacity: 0.9 }}>
+            Questo preventivo è in sola lettura.
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Colonna sinistra */}
@@ -744,55 +832,12 @@ export default function DettaglioPreventivoPage() {
             </div>
           )}
 
-          <div className="card p-5">
-            <h3 className="text-sm font-bold uppercase tracking-wider mb-3">
-              Stato avanzamento
-            </h3>
-            <div className="space-y-1.5">
-              {statusOptionsForUpdate.map((opt) => {
-                const isCurrent = quote.status === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => updateStatus(opt.value)}
-                    disabled={updating || isCurrent}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-2"
-                    style={{
-                      background: isCurrent
-                        ? "var(--mc-accent-soft)"
-                        : "var(--mc-bg-elevated)",
-                      border: `1px solid ${
-                        isCurrent ? "var(--mc-accent)" : "var(--mc-border)"
-                      }`,
-                      cursor: isCurrent ? "default" : "pointer",
-                      opacity: updating && !isCurrent ? 0.5 : 1,
-                    }}
-                  >
-                    <span className={`badge ${opt.class}`}>
-                      <span className="badge-dot" />
-                      {opt.label}
-                    </span>
-                    {isCurrent && (
-                      <span
-                        className="text-xs font-semibold ml-auto"
-                        style={{ color: "var(--mc-accent)" }}
-                      >
-                        attuale
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+          {quote.expiresAt && (
+            <div className="card p-5">
+              <div className="label">Scadenza preventivo</div>
+              <div className="font-semibold text-sm mt-1">{formatDate(quote.expiresAt)}</div>
             </div>
-          </div>
-
-          <div className="card p-5">
-            <div className="label">Scadenza preventivo</div>
-            <div className="font-semibold text-sm mt-1">
-              {formatDate(quote.expiresAt)}
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

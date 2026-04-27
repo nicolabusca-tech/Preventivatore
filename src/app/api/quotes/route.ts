@@ -11,9 +11,9 @@ export async function GET(req: Request) {
   await prisma.quote.updateMany({
     where: {
       expiresAt: { lt: new Date() },
-      status: { in: ["pending", "inviato"] },
+      status: { in: ["sent"] },
     },
-    data: { status: "scaduto" },
+    data: { status: "sent" },
   });
 
   const isAdmin = session.user.role === "admin";

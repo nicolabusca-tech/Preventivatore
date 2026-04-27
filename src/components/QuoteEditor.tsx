@@ -740,8 +740,17 @@ export function QuoteEditor({ initial }: Props) {
     setSavingDraft(false);
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data?.error || "Errore nel salvataggio bozza.");
+      const raw = await res.text().catch(() => "");
+      let message = `Errore nel salvataggio bozza (HTTP ${res.status}).`;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.error) message = String(parsed.error);
+        } catch {
+          message = `${message} ${raw.slice(0, 220)}`;
+        }
+      }
+      setError(message);
       return null;
     }
 
@@ -771,8 +780,17 @@ export function QuoteEditor({ initial }: Props) {
         body: JSON.stringify({ quoteId }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data?.error || "Errore invio preventivo.");
+        const raw = await res.text().catch(() => "");
+        let message = `Errore invio preventivo (HTTP ${res.status}).`;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.error) message = String(parsed.error);
+          } catch {
+            message = `${message} ${raw.slice(0, 220)}`;
+          }
+        }
+        setError(message);
         return;
       }
 

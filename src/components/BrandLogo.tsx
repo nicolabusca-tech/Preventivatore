@@ -30,14 +30,13 @@ export function BrandLogo({
         />
       ) : (
         <>
-          <img
-            src="/brand/metodo-cantiere-light.svg"
+          <Image
+            src="/brand/metodo-cantiere-light.png"
             alt="Metodo Cantiere"
             width={220}
             height={height}
             className="mc-brand-logo__light"
-            loading={priority ? "eager" : "lazy"}
-            decoding="async"
+            priority={priority}
             style={{ height: "100%", width: "auto" }}
           />
           <Image

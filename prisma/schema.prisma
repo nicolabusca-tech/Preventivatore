@@ -8,7 +8,7 @@ generator client {
 datasource db {
   // SQLite per sviluppo locale - nessuna installazione richiesta
   // In produzione su Vercel si usa Postgres: cambiare provider a "postgresql"
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

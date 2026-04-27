@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   buildRoiSnapshot,
+  computeConversioneAttesa,
   computeDiagnosiPesoTotale,
   computeDiagnosiShareValue,
   mergeRoiDefaults,
@@ -415,6 +416,44 @@ export default function NuovoPreventivoPage() {
       diagnosiPesoTotale
     );
   }, [products, roiInputs, selected, totals.monthlyAfterPrepay, totals.oneTimeTotal]);
+
+  const roiExplain = useMemo(() => {
+    const selectedForRoi = Array.from(selected.entries())
+      .map(([code, quantity]) => {
+        const p = products.find((x) => x.code === code);
+        if (!p) return null;
+        if (code === AUDIT_LAMPO_CODE) return null;
+        return { productCode: p.code, quantity };
+      })
+      .filter(Boolean) as { productCode: string; quantity: number }[];
+    const byCode = new Map<string, { diagnosiPeso: number; isMonthly: boolean }>(
+      products.map((p) => [p.code, { diagnosiPeso: p.diagnosiPeso || 0, isMonthly: p.isMonthly }])
+    );
+    const peso = computeDiagnosiPesoTotale(selectedForRoi, byCode);
+    const convAttesa = computeConversioneAttesa(roiInputs, peso);
+    return { peso, convAttesa };
+  }, [products, roiInputs, selected]);
+
+  const roiQuick = useMemo(() => {
+    const payload = roiLive.payload;
+    const investimento = totals.annualTotal;
+    const deltaMargine = payload.margineStimatoProposta - payload.margineAnnuoBaseline;
+    const paybackMesi =
+      deltaMargine > 0 ? (investimento / deltaMargine) * 12 : null;
+
+    const preventiviAnnui = (roiInputs.preventiviMese || 0) * 12;
+    const contrattiAttuali = preventiviAnnui * ((roiInputs.conversioneAttuale || 0) / 100);
+    const contrattiAttesi = preventiviAnnui * (roiExplain.convAttesa || 0);
+
+    return {
+      investimento,
+      deltaMargine,
+      paybackMesi,
+      preventiviAnnui,
+      contrattiAttuali,
+      contrattiAttesi,
+    };
+  }, [roiExplain.convAttesa, roiInputs.conversioneAttuale, roiInputs.preventiviMese, roiLive.payload, totals.annualTotal]);
 
   async function applyDiscountCode() {
     setDiscountCodeMessage(null);
@@ -1479,6 +1518,16 @@ export default function NuovoPreventivoPage() {
               <div className="text-xs font-bold uppercase tracking-wider mb-2">ROI (live)</div>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between gap-2">
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Peso ROI totale</span>
+                  <span className="font-semibold tabular-nums">{roiExplain.peso.toFixed(0)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span style={{ color: "var(--mc-text-secondary)" }}>Conversione attesa</span>
+                  <span className="font-semibold tabular-nums">
+                    {(roiExplain.convAttesa * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
                   <span style={{ color: "var(--mc-text-secondary)" }}>Margine baseline</span>
                   <span className="font-semibold tabular-nums">
                     {formatEuro(roiLive.payload.margineAnnuoBaseline)}
@@ -1489,6 +1538,37 @@ export default function NuovoPreventivoPage() {
                   <span className="font-semibold tabular-nums">
                     {formatEuro(roiLive.payload.margineStimatoProposta)}
                   </span>
+                </div>
+                <div
+                  className="pt-2 mt-2 space-y-1"
+                  style={{ borderTop: "1px solid var(--mc-border)" }}
+                >
+                  <div className="flex justify-between gap-2">
+                    <span style={{ color: "var(--mc-text-secondary)" }}>Investimento (1° anno)</span>
+                    <span className="font-semibold tabular-nums">
+                      {formatEuro(roiQuick.investimento)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span style={{ color: "var(--mc-text-secondary)" }}>Δ margine (stima)</span>
+                    <span className="font-semibold tabular-nums">
+                      {formatEuro(roiQuick.deltaMargine)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span style={{ color: "var(--mc-text-secondary)" }}>Rientro stimato</span>
+                    <span className="font-semibold tabular-nums">
+                      {roiQuick.paybackMesi == null
+                        ? "—"
+                        : `${roiQuick.paybackMesi.toFixed(1)} mesi`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span style={{ color: "var(--mc-text-secondary)" }}>Contratti/anno</span>
+                    <span className="font-semibold tabular-nums">
+                      {roiQuick.contrattiAttuali.toFixed(1)} → {roiQuick.contrattiAttesi.toFixed(1)}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex justify-between gap-2">
                   <span style={{ color: "var(--mc-text-secondary)" }}>Quota diagnosi</span>

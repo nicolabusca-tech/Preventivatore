@@ -18,6 +18,9 @@ export type RoiSnapshotPayload = {
   margineStimatoProposta: number;
   valoreQuotaDiagnosi: number;
   indice: number | null;
+  // Campi extra (v1.6) — utili per debug/trasparenza UI
+  diagnosiPesoTotale?: number;
+  conversioneAttesa?: number;
 };
 
 export const DEFAULT_ROI_FORM: RoiFormInputs = {
@@ -38,6 +41,19 @@ export function mergeRoiDefaults(over: Partial<RoiFormInputs> | null | undefined
 }
 
 type ProductRoiRow = { diagnosiPeso: number; isMonthly: boolean };
+
+export function computeConversioneAttesa(inputs: RoiFormInputs, diagnosiPesoTotale: number): number {
+  const conversioneAttuale = (inputs.conversioneAttuale || 0) / 100;
+
+  // FORMULA ROI v2 — usa diagnosiPesoTotale (somma pesi voci selezionate)
+  const PAVIMENTO_CONVERSIONE = diagnosiPesoTotale >= 15 ? 0.06 : 0;
+  const CAP_CONVERSIONE = 0.3;
+
+  const conversioneAttesaProporzionale =
+    conversioneAttuale * (1 + Math.max(0, diagnosiPesoTotale) / 100);
+  const conversioneAttesaConPavimento = Math.max(conversioneAttesaProporzionale, PAVIMENTO_CONVERSIONE);
+  return Math.min(conversioneAttesaConPavimento, CAP_CONVERSIONE);
+}
 
 export function computeDiagnosiShareValue(
   selected: { productCode: string; quantity: number; price: number; isMonthly: boolean }[],
@@ -84,16 +100,7 @@ export function buildRoiSnapshot(
   const marginePerContratto = inputs.importoMedio * (inputs.margineCommessa / 100);
   const margineAnnuoBaseline = contrattiAttuali * marginePerContratto;
 
-  // FORMULA ROI v2 — usa diagnosiPesoTotale (somma pesi voci selezionate)
-  // Cap assoluto 30% conversione attesa.
-  // Pavimento 6%: se il piano ha peso ≥ 15%, garantiamo almeno 6% di conversione attesa
-  // (utile per clienti che partono da conversione molto bassa, es 2%).
-  const PAVIMENTO_CONVERSIONE = diagnosiPesoTotale >= 15 ? 0.06 : 0;
-  const CAP_CONVERSIONE = 0.3;
-
-  const conversioneAttesaProporzionale = conversioneAttuale * (1 + diagnosiPesoTotale / 100);
-  const conversioneAttesaConPavimento = Math.max(conversioneAttesaProporzionale, PAVIMENTO_CONVERSIONE);
-  const conversioneAttesa = Math.min(conversioneAttesaConPavimento, CAP_CONVERSIONE);
+  const conversioneAttesa = computeConversioneAttesa(inputs, diagnosiPesoTotale);
   const contrattiAttesi = preventiviAnnui * conversioneAttesa;
   const margineStimatoProposta = contrattiAttesi * marginePerContratto;
 
@@ -112,6 +119,8 @@ export function buildRoiSnapshot(
     margineStimatoProposta,
     valoreQuotaDiagnosi: diagnosiShareValue,
     indice,
+    diagnosiPesoTotale,
+    conversioneAttesa,
   };
   return { snapshot: JSON.stringify(payload), payload };
 }

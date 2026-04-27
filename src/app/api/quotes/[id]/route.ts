@@ -9,6 +9,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
+  // Aggiornamento automatico stato "scaduto" per il singolo preventivo
+  await prisma.quote.updateMany({
+    where: {
+      id: params.id,
+      expiresAt: { lt: new Date() },
+      status: { in: ["pending", "inviato"] },
+    },
+    data: { status: "scaduto" },
+  });
+
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
     include: {
@@ -32,6 +42,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
   const data = await req.json();
+
+  if (data.status !== undefined) {
+    const allowed = ["pending", "inviato", "accettato", "rifiutato"];
+    if (typeof data.status !== "string" || !allowed.includes(data.status)) {
+      return NextResponse.json(
+        { error: "Stato non valido. Valori ammessi: pending, inviato, accettato, rifiutato." },
+        { status: 400 }
+      );
+    }
+  }
+
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
     include: { items: true },

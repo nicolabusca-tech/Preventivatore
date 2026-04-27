@@ -222,6 +222,7 @@ export default function DettaglioPreventivoPage() {
   );
   const monthlyItems = quote.items.filter((i) => i.isMonthly);
   const currentStatus = statusOptions.find((s) => s.value === quote.status);
+  const statusOptionsForUpdate = statusOptions.filter((s) => s.value !== "scaduto");
   const fullAddress = buildFullAddress(quote);
   const roiSnap = parseRoiSnapshot(quote.roiSnapshot);
   const showSetupSection = setupLineItems.length > 0 || quote.diagnosiGiaPagata;
@@ -748,7 +749,7 @@ export default function DettaglioPreventivoPage() {
               Stato avanzamento
             </h3>
             <div className="space-y-1.5">
-              {statusOptions.map((opt) => {
+              {statusOptionsForUpdate.map((opt) => {
                 const isCurrent = quote.status === opt.value;
                 return (
                   <button

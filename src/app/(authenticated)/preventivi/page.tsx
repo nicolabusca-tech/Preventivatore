@@ -29,8 +29,10 @@ const statusLabels: Record<string, { label: string; class: string }> = {
 
 const filterTabs = [
   { value: "all", label: "Tutti" },
+  { value: "open", label: "Aperti" },
   { value: "pending", label: "In attesa" },
   { value: "inviato", label: "Inviati" },
+  { value: "expiring", label: "In scadenza" },
   { value: "accettato", label: "Accettati" },
   { value: "rifiutato", label: "Rifiutati" },
   { value: "scaduto", label: "Scaduti" },
@@ -70,28 +72,38 @@ export default function PreventiviPage() {
   useEffect(() => {
     fetchQuotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, []);
 
   async function fetchQuotes() {
     setLoading(true);
-    const url = filter === "all" ? "/api/quotes" : `/api/quotes?status=${filter}`;
-    const res = await fetch(url);
+    const res = await fetch("/api/quotes");
     const data = await res.json();
     setQuotes(Array.isArray(data) ? data : []);
     setLoading(false);
   }
 
+  function matchesFilter(quote: Quote) {
+    if (filter === "all") return true;
+    if (filter === "open") return quote.status === "pending" || quote.status === "inviato";
+    if (filter === "expiring") {
+      const d = daysUntil(quote.expiresAt);
+      return (quote.status === "pending" || quote.status === "inviato") && d <= 7 && d >= 0;
+    }
+    return quote.status === filter;
+  }
+
   // Filtro ricerca cliente / numero
   const filteredQuotes = useMemo(() => {
-    if (!search.trim()) return quotes;
+    const base = quotes.filter(matchesFilter);
+    if (!search.trim()) return base;
     const q = search.trim().toLowerCase();
-    return quotes.filter(
+    return base.filter(
       (quote) =>
         quote.clientName.toLowerCase().includes(q) ||
         quote.clientCompany?.toLowerCase().includes(q) ||
         quote.quoteNumber.toLowerCase().includes(q)
     );
-  }, [quotes, search]);
+  }, [quotes, search, filter]);
 
   // Stats: ora con valori in € (NUOVO v1.4)
   const stats = useMemo(() => {
@@ -105,6 +117,7 @@ export default function PreventiviPage() {
         daysUntil(q.expiresAt) >= 0
     );
     const acquisitiQuotes = quotes.filter((q) => q.status === "accettato");
+    const rifiutatiQuotes = quotes.filter((q) => q.status === "rifiutato");
 
     return {
       total: quotes.length,
@@ -121,8 +134,21 @@ export default function PreventiviPage() {
         (sum, q) => sum + q.totalAnnual,
         0
       ),
+      rifiutatiCount: rifiutatiQuotes.length,
+      rifiutatiValue: rifiutatiQuotes.reduce((sum, q) => sum + q.totalAnnual, 0),
     };
   }, [quotes]);
+
+  function cardStyle(isActive: boolean, tone?: "accent" | "danger" | "success") {
+    if (!isActive) return undefined;
+    if (tone === "success") {
+      return { background: "var(--mc-success-bg)", borderColor: "var(--mc-success-border)" };
+    }
+    if (tone === "danger") {
+      return { background: "var(--mc-danger-bg, rgba(185, 28, 28, 0.06))", borderColor: "var(--mc-danger, #b91c1c)" };
+    }
+    return { background: "var(--mc-accent-soft)", borderColor: "var(--mc-accent)" };
+  }
 
   return (
     <div className="animate-fade-in">
@@ -154,33 +180,43 @@ export default function PreventiviPage() {
       </div>
 
       {/* Stats cards con valori in € (v1.4) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <div className="stat-card">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+        <button
+          type="button"
+          className="stat-card text-left"
+          onClick={() => setFilter("all")}
+          style={cardStyle(filter === "all")}
+        >
           <div className="stat-label">Totale preventivato</div>
           <div className="stat-value">{formatEuro(stats.totalValue)}</div>
           <div className="stat-sub">
             {stats.total} {stats.total === 1 ? "preventivo" : "preventivi"}
           </div>
-        </div>
+        </button>
 
-        <div className="stat-card">
+        <button
+          type="button"
+          className="stat-card text-left"
+          onClick={() => setFilter("open")}
+          style={cardStyle(filter === "open")}
+        >
           <div className="stat-label">In attesa</div>
           <div className="stat-value">{formatEuro(stats.inAttesaValue)}</div>
           <div className="stat-sub">
             {stats.inAttesaCount}{" "}
             {stats.inAttesaCount === 1 ? "preventivo aperto" : "preventivi aperti"}
           </div>
-        </div>
+        </button>
 
-        <div
-          className="stat-card"
+        <button
+          type="button"
+          className="stat-card text-left"
+          onClick={() => setFilter("expiring")}
           style={{
-            borderColor:
-              stats.inScadenzaCount > 0 ? "var(--mc-accent)" : "var(--mc-border)",
-            background:
-              stats.inScadenzaCount > 0
-                ? "var(--mc-accent-soft)"
-                : "var(--mc-bg-elevated)",
+            ...(stats.inScadenzaCount > 0
+              ? { borderColor: "var(--mc-accent)", background: "var(--mc-accent-soft)" }
+              : undefined),
+            ...(filter === "expiring" ? cardStyle(true) : undefined),
           }}
         >
           <div
@@ -203,14 +239,13 @@ export default function PreventiviPage() {
             {stats.inScadenzaCount}{" "}
             {stats.inScadenzaCount === 1 ? "preventivo" : "preventivi"} entro 7gg
           </div>
-        </div>
+        </button>
 
-        <div
-          className="stat-card"
-          style={{
-            background: "var(--mc-success-bg)",
-            borderColor: "var(--mc-success-border)",
-          }}
+        <button
+          type="button"
+          className="stat-card text-left"
+          onClick={() => setFilter("accettato")}
+          style={cardStyle(filter === "accettato", "success")}
         >
           <div className="stat-label" style={{ color: "var(--mc-success)" }}>
             Acquisito
@@ -222,7 +257,31 @@ export default function PreventiviPage() {
             {stats.acquisitiCount}{" "}
             {stats.acquisitiCount === 1 ? "preventivo accettato" : "preventivi accettati"}
           </div>
-        </div>
+        </button>
+
+        <button
+          type="button"
+          className="stat-card text-left"
+          onClick={() => setFilter("rifiutato")}
+          style={cardStyle(filter === "rifiutato", "danger")}
+        >
+          <div
+            className="stat-label"
+            style={{ color: "var(--mc-danger, #b91c1c)" }}
+          >
+            Rifiutato
+          </div>
+          <div
+            className="stat-value"
+            style={{ color: "var(--mc-danger, #b91c1c)" }}
+          >
+            {formatEuro(stats.rifiutatiValue)}
+          </div>
+          <div className="stat-sub">
+            {stats.rifiutatiCount}{" "}
+            {stats.rifiutatiCount === 1 ? "preventivo rifiutato" : "preventivi rifiutati"}
+          </div>
+        </button>
       </div>
 
       {/* Toolbar filtri + ricerca */}

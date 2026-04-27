@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { BrandLogo } from "@/components/BrandLogo";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -62,30 +63,7 @@ export default function LoginPage() {
           {/* Brand */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center gap-3 mb-6">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-xl"
-                style={{
-                  background: "var(--mc-accent)",
-                  color: "#FFFFFF",
-                  boxShadow: "0 4px 12px rgba(255, 106, 0, 0.35)",
-                }}
-              >
-                M
-              </div>
-              <div className="text-left leading-none">
-                <div
-                  className="text-xs font-bold uppercase tracking-[0.22em]"
-                  style={{ color: "var(--mc-accent)" }}
-                >
-                  Metodo Cantiere
-                </div>
-                <div
-                  className="text-[10px] font-medium mt-1"
-                  style={{ color: "var(--mc-text-muted)", letterSpacing: "0.12em" }}
-                >
-                  PREVENTIVATORE
-                </div>
-              </div>
+              <BrandLogo size="lg" priority />
             </div>
 
             <h1 className="text-4xl sm:text-5xl mb-2">Accedi</h1>

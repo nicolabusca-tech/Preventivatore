@@ -697,3 +697,32 @@ html[data-theme="dark"] .theme-toggle-thumb {
   transform: translateX(20px);
   color: var(--mc-accent);
 }
+
+/* ============================================================
+   BRAND LOGO (switch light/dark based on theme)
+============================================================ */
+
+.mc-brand-logo {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.mc-brand-logo__light,
+.mc-brand-logo__dark {
+  height: auto;
+  width: auto;
+  max-height: 34px;
+}
+
+.mc-brand-logo__dark {
+  display: none;
+}
+
+html[data-theme="dark"] .mc-brand-logo__light {
+  display: none;
+}
+
+html[data-theme="dark"] .mc-brand-logo__dark {
+  display: inline-block;
+}

@@ -5,6 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { ThemeToggle } from "./ThemeToggle";
+import { BrandLogo } from "./BrandLogo";
 
 export function Navbar() {
   const { data: session } = useSession();
@@ -71,29 +72,17 @@ export function Navbar() {
         <div className="flex items-center justify-between h-14">
           {/* Brand */}
           <Link href="/preventivi" className="flex items-center gap-3 group">
+            <BrandLogo className="hidden sm:inline-flex" size="md" priority />
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm"
+              className="sm:hidden w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm"
               style={{
                 background: "var(--mc-accent)",
                 color: "#FFFFFF",
                 boxShadow: "0 1px 3px rgba(255, 106, 0, 0.4)",
               }}
+              aria-label="Metodo Cantiere"
             >
               M
-            </div>
-            <div className="hidden sm:flex flex-col leading-none">
-              <span
-                className="text-xs font-bold uppercase tracking-[0.18em]"
-                style={{ color: "var(--mc-accent)" }}
-              >
-                Metodo Cantiere
-              </span>
-              <span
-                className="text-[10px] font-medium mt-0.5"
-                style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
-              >
-                PREVENTIVATORE
-              </span>
             </div>
           </Link>
 

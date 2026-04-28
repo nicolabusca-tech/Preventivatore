@@ -184,7 +184,7 @@ export default function AdminRoiSettingsPage() {
     <div className="animate-fade-in max-w-5xl">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-7">
         <div>
-          <h1 className="text-4xl mb-1">Impostazioni ROI</h1>
+          <h1 className="text-2xl sm:text-4xl mb-1">Impostazioni ROI</h1>
           <p className="text-sm" style={{ color: "var(--mc-text-secondary)" }}>
             <strong>Prima sezione:</strong> per ogni voce di listino definisci quanto quella competenza,{" "}
             <em>se messa in offerta</em>, pesa sul contributo al ROI lato cliente (stesso criterio di

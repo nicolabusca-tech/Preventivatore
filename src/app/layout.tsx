@@ -8,6 +8,12 @@ export const metadata: Metadata = {
   description: "Strumento interno per la composizione di preventivi Metodo Cantiere",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 /**
  * Script no-flash: legge la preferenza tema da localStorage (o cade
  * sulla preferenza di sistema) e la applica PRIMA che React idrati.
@@ -34,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeNoFlashScript }} />
       </head>
-      <body>
+      <body className="min-h-screen overflow-x-hidden">
         <Providers>{children}</Providers>
         {process.env.NODE_ENV === "development" ? <DevCwdBar /> : null}
       </body>

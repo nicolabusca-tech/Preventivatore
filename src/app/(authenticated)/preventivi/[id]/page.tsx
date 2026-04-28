@@ -259,7 +259,7 @@ export default function DettaglioPreventivoPage() {
             </svg>
             Torna ai preventivi
           </Link>
-          <h1 className="text-4xl mb-1">Bozza {quote.quoteNumber}</h1>
+          <h1 className="text-2xl sm:text-4xl mb-1">Bozza {quote.quoteNumber}</h1>
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
             Tutto editabile finché resta in bozza.
           </p>
@@ -336,7 +336,7 @@ export default function DettaglioPreventivoPage() {
             >
               {quote.quoteNumber}
             </div>
-            <h1 className="text-4xl mb-1">{quote.clientName}</h1>
+            <h1 className="text-2xl sm:text-4xl mb-1">{quote.clientName}</h1>
             {quote.clientCompany && (
               <div
                 className="text-base italic"

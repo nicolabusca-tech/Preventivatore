@@ -188,7 +188,7 @@ export default function AdminCodiciScontoPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-7">
         <div>
-          <h1 className="text-4xl mb-1">Codici sconto</h1>
+          <h1 className="text-2xl sm:text-4xl mb-1">Codici sconto</h1>
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
             Codici manuali da usare in trattativa. Sostituiscono lo sconto volume
             automatico.
@@ -229,7 +229,7 @@ export default function AdminCodiciScontoPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <div className="stat-card">
           <div className="stat-label">Totali</div>
           <div className="stat-value">{stats.total}</div>

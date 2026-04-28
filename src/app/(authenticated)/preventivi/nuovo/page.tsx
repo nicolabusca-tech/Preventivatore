@@ -30,7 +30,7 @@ export default function NuovoPreventivoPage() {
   return (
     <div className="animate-fade-in">
       <div className="mb-7">
-        <h1 className="text-4xl mb-1">Nuovo preventivo</h1>
+        <h1 className="text-2xl sm:text-4xl mb-1">Nuovo preventivo</h1>
         <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
           Componi l&apos;offerta, salva la bozza e invia al cliente quando pronto.
         </p>

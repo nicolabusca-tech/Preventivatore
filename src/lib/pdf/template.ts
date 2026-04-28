@@ -396,20 +396,36 @@ function renderCosaSuccedeOgniMese() {
   return `
   <section class="pdf-page">
     ${pageHeader("06")}
-    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:4mm">06 Cosa succede ogni mese nella direzione</div>
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:4mm">06 Cosa succede ogni mese</div>
 
-    <div class="no-break box box-warm" style="margin-top:2mm;border:0.5pt solid var(--mc-orange)">
-      <div class="caps orange" style="font-size:9pt">COSA SUCCEDE OGNI MESE NELLA DIREZIONE</div>
-      <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
-        Il prezzo della direzione non paga “essere reperibili”. Paga un ciclo operativo ripetibile, ogni mese, in questa sequenza:
-      </div>
-      <ol style="margin-top:3mm;padding-left:18px">
-        <li><b>Raccolta numeri reali</b> — Lead, chiamate, appuntamenti, preventivi, contratti: tutto dal CRM (e dalle fonti collegate), non “a sensazione”.</li>
-        <li><b>Revisione pipeline e colli di bottiglia</b> — Dove si ferma il flusso questo mese: tempi di risposta, preventivi, follow-up, chiusura, selezione clienti.</li>
-        <li><b>Decisioni di direzione con te (titolare)</b> — 60 minuti: cosa cambiamo ora, cosa tagliamo, cosa raddoppiamo. Un piano d'azione di 30 giorni con priorità chiare.</li>
-        <li><b>Esecuzione guidata su 1–2 leve</b> — Coaching sul gap più costoso e aggiornamento playbook (script, obiezioni, follow-up) con materiale operativo usabile dal team.</li>
-        <li><b>Verifica e accountability</b> — KPI aggiornati nel CRM: a fine mese vediamo se le azioni hanno mosso i numeri. Se non li muovono, si corregge rotta.</li>
-      </ol>
+    <div class="no-break" style="margin-top:2mm">
+      <table style="width:100%;border-collapse:separate;border-spacing:0 0">
+        <tbody>
+          <tr>
+            <td style="width:65%;vertical-align:top;padding-right:6mm">
+              <div class="caps orange" style="font-size:9pt">METODO CANTIERE — SEMPRE</div>
+              <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+                Ogni mese, un ciclo operativo ripetibile in 5 fasi.
+              </div>
+              <ol style="margin-top:3mm;padding-left:18px">
+                <li><b>Raccolta numeri reali</b> — Lead, chiamate, appuntamenti, preventivi, contratti: tutto dal CRM, non a sensazione. I numeri diventano il tuo cruscotto di comando.</li>
+                <li><b>Revisione pipeline e colli di bottiglia</b> — Dove si ferma il flusso questo mese: tempi di risposta, preventivi fermi, follow up mancati, clienti non qualificati. Il sistema te lo mostra, tu decidi dove intervenire.</li>
+                <li><b>Decisioni operative</b> — Cosa cambiare ora, cosa tagliare, cosa raddoppiare. Un piano d'azione di 30 giorni con priorità chiare, non una lista infinita di cose da fare.</li>
+                <li><b>Esecuzione su 1 o 2 leve</b> — Focus sul gap più costoso del mese. Aggiornamento playbook, script, gestione obiezioni, sequenze di follow up. Materiale operativo pronto per il team.</li>
+                <li><b>Verifica e accountability</b> — KPI aggiornati nel CRM: a fine mese vedi se le azioni hanno mosso i numeri. Se non li muovono, si corregge rotta.</li>
+              </ol>
+            </td>
+            <td style="width:35%;vertical-align:top">
+              <div style="padding:20px;border-left:3px solid #FF6A00;background:#1a1a1a;color:#FAF8F4;border-radius:10px">
+                <div class="caps" style="font-size:9pt;color:#fff;letter-spacing:0.12em">SE ATTIVI ANCHE LA DIREZIONE</div>
+                <div style="margin-top:3mm;font-size:10pt;line-height:1.45;color:rgba(250,248,244,0.85)">
+                  Il metodo funziona anche da solo, ma con la Direzione non sei solo a guidarlo. Ogni mese lavoriamo insieme: leggiamo i numeri con te, identifichiamo il collo di bottiglia, prendiamo le decisioni operative in una sessione di 60 minuti col titolare, e ti affianchiamo nell'esecuzione. Tu metti il team, noi mettiamo il presidio strategico. Mese dopo mese, il sistema migliora perché qualcuno lo tiene vivo.
+                </div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
   `;
@@ -550,8 +566,13 @@ function renderPage5(quote: QuoteWithRelations) {
       Due facce dello stesso conto: cosa puoi guadagnare costruendo il sistema, cosa stai perdendo ogni mese che resta tutto così
     </div>
     <div style="font-style:italic;font-size:11pt;margin-bottom:7mm">
-      Quello che Remus e Giovanni hanno misurato a posteriori, noi lo calcoliamo in anticipo sui tuoi dati.
-      Due tabelle. Cosa puoi guadagnare costruendo il sistema. Cosa stai perdendo a non farlo.
+      <b>Di solito questi numeri li vedi a posteriori.</b> Quando è tardi: preventivi persi, follow-up saltati, margini regalati.
+      <br />
+      <b>Noi li mettiamo sul tavolo prima</b>, usando i tuoi dati: due conti semplici.
+      <br />
+      <b>1) Cosa puoi recuperare costruendo il sistema.</b> <b>2) Cosa stai già perdendo ogni mese</b> lasciandolo com’è.
+      <br />
+      Nelle pagine successive vedi esempi reali di aziende che hanno scoperto lo stesso “buco” solo dopo.
     </div>
 
     ${
@@ -985,42 +1006,104 @@ function renderPage9Payments(quote: QuoteWithRelations) {
     typeof quote.totalAnnual === "number" && quote.totalAnnual > 0
       ? quote.totalAnnual
       : quote.totalSetup + quote.totalMonthly * 12;
-  const stripeSetupSconto = Math.round(setupTotals.totalSetup * 0.97);
-  const anticipatoSconto = Math.round(primoAnnoCompleto * 0.95);
+
+  const crmMonthlyFromItems = quote.items
+    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_CRM"))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+  const aiMonthlyFromItems = quote.items
+    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_AI"))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+  const waMonthlyFromItems = quote.items
+    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_WA"))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+
+  const crmPrepay =
+    !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0
+      ? canonePrepayFromMonthly(crmMonthlyFromItems, "CRM")
+      : null;
+  const aiPrepay =
+    !!quote.scontoAiVocaleAnnuale && aiMonthlyFromItems > 0
+      ? canonePrepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
+      : null;
+  const waPrepay =
+    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? canonePrepayFromMonthly(waMonthlyFromItems, "WA") : null;
+
+  const canoniAnticipatiAllaFirma =
+    (crmPrepay?.netOneTime ?? 0) + (aiPrepay?.netOneTime ?? 0) + (waPrepay?.netOneTime ?? 0);
+
+  const oggiStandard = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
+  const oggiStripeSetup = Math.round(setupTotals.totalSetup * 0.97 + canoniAnticipatiAllaFirma);
+  const oggiAnticipato = Math.round(primoAnnoCompleto * 0.95);
+  const rateBase = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
+  const rateOggi30 = Math.round(rateBase * 0.3);
+  const rateResto70 = Math.max(0, rateBase - rateOggi30);
+  const totalePrimoAnno = Math.round(primoAnnoCompleto);
 
   return `
   <section class="pdf-page">
     ${pageHeader("09")}
     <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">09 Modalità di pagamento</div>
     <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:6mm">
-      Scegli la modalità più comoda. I canoni mensili ricorrenti restano separati quando indicato.
+      Scegli la modalità più comoda. Dove previsto, i canoni mensili ricorrenti restano separati.
     </div>
 
     <div class="no-break">
       <div class="caps orange" style="font-size:8pt;margin-bottom:3mm">Modalità di pagamento e sconti</div>
-      <table>
-        <thead>
-          <tr>
-            <th style="background:var(--mc-beige);color:var(--mc-muted)">STANDARD</th>
-            <th style="background:var(--mc-green);color:#fff">STRIPE SETUP · -3%</th>
-            <th style="background:var(--mc-orange);color:#fff">ANTICIPATO 12 MESI · -5%</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Bonifico standard alla firma per il setup. I canoni mensili ricorrenti (es. Direzione, CRM / AI Vocale / WhatsApp se non anticipati) addebitati mese per mese.</td>
-            <td style="background:var(--mc-green-bg)"><b>Setup ${escapeHtml(formatEuro(stripeSetupSconto))}</b> via Stripe. Canoni mensili a parte.</td>
-            <td style="background:var(--mc-orange-light)"><b>${escapeHtml(formatEuro(anticipatoSconto))}</b> (primo anno: setup, eventuali canoni anticipati e 12 mesi di canoni ricorrenti) in anticipo alla firma.</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="no-break" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div class="box" style="background:var(--mc-beige);border:1px solid #EDE6D6">
+          <div class="caps muted" style="font-size:8pt">STANDARD</div>
+          <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+            Setup alla firma. Canoni ricorrenti mese per mese (se presenti). Canoni annuali anticipati (se scelti) alla firma.
+          </div>
+          <div style="margin-top:4mm;border-top:1px solid #EDE6D6;padding-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Oggi alla firma</div>
+            <div style="font-weight:800;font-size:13pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiStandard))}</div>
+          </div>
+          <div style="margin-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Totale primo anno</div>
+            <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(totalePrimoAnno))}</div>
+          </div>
+        </div>
+
+        <div class="box" style="background:var(--mc-green-bg);border:1px solid rgba(45,122,62,0.25)">
+          <div class="caps" style="font-size:8pt;color:#2D7A3E">STRIPE SETUP · -3%</div>
+          <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+            Sconto sul setup pagato via Stripe. Canoni ricorrenti mese per mese (se presenti). Canoni annuali anticipati (se scelti) alla firma.
+          </div>
+          <div style="margin-top:4mm;border-top:1px solid rgba(45,122,62,0.2);padding-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Oggi alla firma</div>
+            <div style="font-weight:800;font-size:13pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiStripeSetup))}</div>
+          </div>
+          <div style="margin-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Totale primo anno</div>
+            <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(totalePrimoAnno - Math.round(setupTotals.totalSetup * 0.03)))}</div>
+          </div>
+        </div>
+
+        <div class="box" style="background:var(--mc-orange-light);border:1px solid rgba(255,106,0,0.25)">
+          <div class="caps" style="font-size:8pt;color:var(--mc-orange)">ANTICIPATO 12 MESI · -5%</div>
+          <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+            Primo anno completo in anticipo alla firma (setup + 12 mesi). Sconto 5% sul totale primo anno.
+          </div>
+          <div style="margin-top:4mm;border-top:1px solid rgba(255,106,0,0.22);padding-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Oggi alla firma</div>
+            <div style="font-weight:800;font-size:13pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiAnticipato))}</div>
+          </div>
+          <div style="margin-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Totale primo anno</div>
+            <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiAnticipato))}</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="no-break box" style="margin-top:6mm;background:var(--mc-beige);border:1px solid #EDE6D6">
       <div class="caps muted" style="font-size:8pt">IN ALTERNATIVA: RATEIZZAZIONE SU CARTA DI CREDITO</div>
-      <div style="margin-top:2mm;font-size:10pt">
-        Per Setup superiori a 5.000 € puoi rateizzare con la tua carta di credito aziendale tramite Stripe: 30% all'accettazione del piano,
-        il restante 70% in 3 o 6 rate mensili automatiche sulla stessa carta. Le rate non sono cumulabili con gli sconti del 3% o 5%.
+      <div style="margin-top:2mm;font-size:10pt;line-height:1.45">
+        Per setup superiori a 5.000 € puoi rateizzare tramite Stripe: <b>${escapeHtml(
+          formatEuro(rateOggi30)
+        )}</b> oggi (30%) e <b>${escapeHtml(formatEuro(rateResto70))}</b> nel restante 70% in 3 o 6 rate mensili automatiche sulla stessa carta.
+        Le rate non sono cumulabili con gli sconti del 3% o 5%. I canoni mensili ricorrenti (se presenti) restano addebitati mese per mese.
       </div>
     </div>
   </section>
@@ -1110,6 +1193,20 @@ function renderPage7(quote: QuoteWithRelations) {
         <div style="margin-top:2mm;font-size:10pt">
           La direzione mensile prevede una permanenza di 6 mesi minimi. Dopo i 6 mesi sei libero di uscire mese su mese, senza penali, con preavviso di 30 giorni.
           La garanzia 60 giorni copre la fase di attivazione: se entro 60 giorni il sistema non è operativo, continuiamo a lavorare gratis fino a quando lo è.
+        </div>
+      </div>
+
+      <div class="no-break box box-warm" style="border:1px solid #EDE6D6;margin-top:3mm">
+        <div style="font-weight:800;font-size:11pt">Quanto tempo devo dedicare io come titolare?</div>
+        <div style="margin-top:2mm;font-size:10pt">
+          Dipende da cosa attivi. Solo per il setup iniziale ti chiediamo 2 o 3 sessioni da un'ora nella prima settimana, per configurare il sistema col tuo team. Da quel momento in poi il sistema lavora in autonomia: il CRM raccoglie i dati, le automazioni fanno il follow up, la dashboard ti mostra i numeri. Quanto guardi quei numeri dipende da te. Se attivi anche la Direzione mensile, aggiungi una call da 60 minuti al mese in cui leggiamo i dati insieme e decidiamo dove intervenire. In entrambi i casi non ti chiediamo di smettere di stare in cantiere. Ti chiediamo di dedicare alla parte commerciale lo stesso tempo che oggi dedichi a perdere preventivi.
+        </div>
+      </div>
+
+      <div class="no-break box box-warm" style="border:1px solid #EDE6D6;margin-top:3mm">
+        <div style="font-weight:800;font-size:11pt">Funziona anche per un'impresa con pochi commerciali o senza rete vendita?</div>
+        <div style="margin-top:2mm;font-size:10pt">
+          Il metodo è nato proprio per imprese che non hanno un reparto commerciale strutturato. La maggior parte dei nostri clienti sono titolari che fanno tutto da soli o con un commerciale e mezzo. Il sistema non richiede una rete vendita: richiede un processo. Se oggi rispondi tu al telefono, fai tu i preventivi e segui tu i clienti, il metodo ti serve ancora di più, perché automatizza tutto quello che oggi dimentichi di fare quando sei in cantiere.
         </div>
       </div>
     </div>

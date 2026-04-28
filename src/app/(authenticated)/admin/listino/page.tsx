@@ -272,7 +272,7 @@ export default function AdminListinoPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-7">
         <div>
-          <h1 className="text-4xl mb-1">Gestione listino</h1>
+          <h1 className="text-2xl sm:text-4xl mb-1">Gestione listino</h1>
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
             Modifica prezzi, copy e obiezioni dei prodotti. Le modifiche sono
             immediate nel preventivatore.

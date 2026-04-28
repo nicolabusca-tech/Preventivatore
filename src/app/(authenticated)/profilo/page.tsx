@@ -104,7 +104,7 @@ export default function ProfiloPage() {
   return (
     <div className="animate-fade-in max-w-2xl">
       <div className="mb-7">
-        <h1 className="text-4xl mb-1">Profilo</h1>
+        <h1 className="text-2xl sm:text-4xl mb-1">Profilo</h1>
         <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
           Aggiorna email e password del tuo account.
         </p>

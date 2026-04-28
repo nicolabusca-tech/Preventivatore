@@ -237,7 +237,7 @@ export default function AdminUtentiPage() {
     <div className="animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-7">
         <div>
-          <h1 className="text-4xl mb-1">Utenti</h1>
+          <h1 className="text-2xl sm:text-4xl mb-1">Utenti</h1>
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
             Gestione team commerciale e permessi.
           </p>

@@ -3,6 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { generatePdf } from "@/lib/pdf/generate-pdf";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 
+function safeFileToken(input: string) {
+  return input
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120);
+}
+
 export async function GET(
   req: Request,
   { params }: { params: { quoteNumber: string } }
@@ -43,12 +52,14 @@ export async function GET(
 
   try {
     const pdfBuffer = await generatePdf(quote);
-    const filename = `Piano-Operativo-${quote.quoteNumber}.pdf`;
+    const safeQuoteNumber = safeFileToken(String(quote.quoteNumber || "preventivo"));
+    const filename = `Piano-Operativo-${safeQuoteNumber || "preventivo"}.pdf`;
+    const filenameStar = encodeURIComponent(filename);
     return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${filename}"`,
+        "Content-Disposition": `inline; filename="${filename}"; filename*=UTF-8''${filenameStar}`,
         "Content-Length": pdfBuffer.length.toString(),
         "Cache-Control": "no-store",
       },

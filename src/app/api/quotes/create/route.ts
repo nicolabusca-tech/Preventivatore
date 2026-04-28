@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
+import { assertCsrf } from "@/lib/security/csrf";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
@@ -18,6 +19,11 @@ function buildNextQuoteNumber(prev: string | null, year: number) {
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  try {
+    assertCsrf(req);
+  } catch {
+    return NextResponse.json({ error: "CSRF" }, { status: 403 });
+  }
 
   await ensureQuoteSchema();
 

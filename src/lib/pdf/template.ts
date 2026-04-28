@@ -399,33 +399,30 @@ function renderCosaSuccedeOgniMese() {
     <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:4mm">06 Cosa succede ogni mese</div>
 
     <div class="no-break" style="margin-top:2mm">
-      <table style="width:100%;border-collapse:separate;border-spacing:0 0">
-        <tbody>
-          <tr>
-            <td style="width:65%;vertical-align:top;padding-right:6mm">
-              <div class="caps orange" style="font-size:9pt">METODO CANTIERE — SEMPRE</div>
-              <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
-                Ogni mese, un ciclo operativo ripetibile in 5 fasi.
-              </div>
-              <ol style="margin-top:3mm;padding-left:18px">
-                <li><b>Raccolta numeri reali</b> — Lead, chiamate, appuntamenti, preventivi, contratti: tutto dal CRM, non a sensazione. I numeri diventano il tuo cruscotto di comando.</li>
-                <li><b>Revisione pipeline e colli di bottiglia</b> — Dove si ferma il flusso questo mese: tempi di risposta, preventivi fermi, follow up mancati, clienti non qualificati. Il sistema te lo mostra, tu decidi dove intervenire.</li>
-                <li><b>Decisioni operative</b> — Cosa cambiare ora, cosa tagliare, cosa raddoppiare. Un piano d'azione di 30 giorni con priorità chiare, non una lista infinita di cose da fare.</li>
-                <li><b>Esecuzione su 1 o 2 leve</b> — Focus sul gap più costoso del mese. Aggiornamento playbook, script, gestione obiezioni, sequenze di follow up. Materiale operativo pronto per il team.</li>
-                <li><b>Verifica e accountability</b> — KPI aggiornati nel CRM: a fine mese vedi se le azioni hanno mosso i numeri. Se non li muovono, si corregge rotta.</li>
-              </ol>
-            </td>
-            <td style="width:35%;vertical-align:top">
-              <div style="padding:20px;border-left:3px solid #FF6A00;background:#1a1a1a;color:#FAF8F4;border-radius:10px">
-                <div class="caps" style="font-size:9pt;color:#fff;letter-spacing:0.12em">SE ATTIVI ANCHE LA DIREZIONE</div>
-                <div style="margin-top:3mm;font-size:10pt;line-height:1.45;color:rgba(250,248,244,0.85)">
-                  Il metodo funziona anche da solo, ma con la Direzione non sei solo a guidarlo. Ogni mese lavoriamo insieme: leggiamo i numeri con te, identifichiamo il collo di bottiglia, prendiamo le decisioni operative in una sessione di 60 minuti col titolare, e ti affianchiamo nell'esecuzione. Tu metti il team, noi mettiamo il presidio strategico. Mese dopo mese, il sistema migliora perché qualcuno lo tiene vivo.
-                </div>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="box" style="background:var(--mc-beige);border:1px solid #EDE6D6">
+        <div class="caps orange" style="font-size:9pt">METODO CANTIERE — SEMPRE</div>
+        <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+          Ogni mese, un ciclo operativo ripetibile in 5 fasi.
+        </div>
+        <ol style="margin-top:3mm;padding-left:18px;font-size:10.5pt;line-height:1.45">
+          <li><b>Raccolta numeri reali</b> — Lead, chiamate, appuntamenti, preventivi, contratti: tutto dal CRM, non a sensazione. I numeri diventano il tuo cruscotto di comando.</li>
+          <li><b>Revisione pipeline e colli di bottiglia</b> — Dove si ferma il flusso questo mese: tempi di risposta, preventivi fermi, follow up mancati, clienti non qualificati. Il sistema te lo mostra, tu decidi dove intervenire.</li>
+          <li><b>Decisioni operative</b> — Cosa cambiare ora, cosa tagliare, cosa raddoppiare. Un piano d'azione di 30 giorni con priorità chiare, non una lista infinita di cose da fare.</li>
+          <li><b>Esecuzione su 1 o 2 leve</b> — Focus sul gap più costoso del mese. Aggiornamento playbook, script, gestione obiezioni, sequenze di follow up. Materiale operativo pronto per il team.</li>
+          <li><b>Verifica e accountability</b> — KPI aggiornati nel CRM: a fine mese vedi se le azioni hanno mosso i numeri. Se non li muovono, si corregge rotta.</li>
+        </ol>
+      </div>
+
+      <div class="no-break" style="margin-top:8mm">
+        <div style="padding:18px;border:1px solid rgba(255,106,0,0.28);border-left:4px solid #FF6A00;background:#1a1a1a;color:#FAF8F4;border-radius:10px">
+          <div class="caps" style="font-size:10pt;color:#fff;letter-spacing:0.12em">SE ATTIVI ANCHE LA DIREZIONE</div>
+          <div style="margin-top:3mm;font-size:10.5pt;line-height:1.5;color:rgba(250,248,244,0.88)">
+            Il metodo funziona anche da solo, ma con la <b>Direzione</b> non sei solo a guidarlo.
+            Ogni mese lavoriamo insieme: leggiamo i numeri con te, identifichiamo il collo di bottiglia, prendiamo le decisioni operative in una sessione di <b>60 minuti</b> col titolare, e ti affianchiamo nell'esecuzione.
+            Tu metti il team, noi mettiamo il presidio strategico. Mese dopo mese, il sistema migliora perché qualcuno lo tiene vivo.
+          </div>
+        </div>
+      </div>
     </div>
   </section>
   `;
@@ -991,9 +988,9 @@ function renderPage8Roi(quote: QuoteWithRelations) {
       <div style="margin-top:2mm;font-size:10pt;line-height:1.45;color:var(--mc-black)">
         Oltre all’investimento, hai anche un <b>credito riutilizzabile</b> entro 12 mesi su qualunque voce del listino.
         L’importo esatto lo trovi nel riepilogo economico: qui ti basta sapere che è una leva pronta per potenziare il sistema quando i numeri lo giustificano.
-      </div>
-      <div class="muted" style="margin-top:2mm;font-style:italic;font-size:9pt">
-        Credito indicativo (già calcolato nel riepilogo): ${escapeHtml(formatEuro(setupTotals.creditoMetodoCantiere))}
+        Nel tuo caso, il credito indicativo (già calcolato nel riepilogo) è <b>${escapeHtml(
+          formatEuro(setupTotals.creditoMetodoCantiere)
+        )}</b>.
       </div>
     </div>
   </section>
@@ -1032,7 +1029,6 @@ function renderPage9Payments(quote: QuoteWithRelations) {
     (crmPrepay?.netOneTime ?? 0) + (aiPrepay?.netOneTime ?? 0) + (waPrepay?.netOneTime ?? 0);
 
   const oggiStandard = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
-  const oggiStripeSetup = Math.round(setupTotals.totalSetup * 0.97 + canoniAnticipatiAllaFirma);
   const oggiAnticipato = Math.round(primoAnnoCompleto * 0.95);
   const rateBase = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
   const rateOggi30 = Math.round(rateBase * 0.3);
@@ -1051,7 +1047,7 @@ function renderPage9Payments(quote: QuoteWithRelations) {
       <div class="caps orange" style="font-size:8pt;margin-bottom:3mm">Modalità di pagamento e sconti</div>
       <div class="no-break" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         <div class="box" style="background:var(--mc-beige);border:1px solid #EDE6D6">
-          <div class="caps muted" style="font-size:8pt">STANDARD</div>
+          <div class="caps muted" style="font-size:8pt">STANDARD (BONIFICO)</div>
           <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
             Setup alla firma. Canoni ricorrenti mese per mese (se presenti). Canoni annuali anticipati (se scelti) alla firma.
           </div>
@@ -1062,21 +1058,6 @@ function renderPage9Payments(quote: QuoteWithRelations) {
           <div style="margin-top:3mm">
             <div class="caps muted" style="font-size:7.5pt">Totale primo anno</div>
             <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(totalePrimoAnno))}</div>
-          </div>
-        </div>
-
-        <div class="box" style="background:var(--mc-green-bg);border:1px solid rgba(45,122,62,0.25)">
-          <div class="caps" style="font-size:8pt;color:#2D7A3E">STRIPE SETUP · -3%</div>
-          <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
-            Sconto sul setup pagato via Stripe. Canoni ricorrenti mese per mese (se presenti). Canoni annuali anticipati (se scelti) alla firma.
-          </div>
-          <div style="margin-top:4mm;border-top:1px solid rgba(45,122,62,0.2);padding-top:3mm">
-            <div class="caps muted" style="font-size:7.5pt">Oggi alla firma</div>
-            <div style="font-weight:800;font-size:13pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiStripeSetup))}</div>
-          </div>
-          <div style="margin-top:3mm">
-            <div class="caps muted" style="font-size:7.5pt">Totale primo anno</div>
-            <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(totalePrimoAnno - Math.round(setupTotals.totalSetup * 0.03)))}</div>
           </div>
         </div>
 
@@ -1094,16 +1075,24 @@ function renderPage9Payments(quote: QuoteWithRelations) {
             <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiAnticipato))}</div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <div class="no-break box" style="margin-top:6mm;background:var(--mc-beige);border:1px solid #EDE6D6">
-      <div class="caps muted" style="font-size:8pt">IN ALTERNATIVA: RATEIZZAZIONE SU CARTA DI CREDITO</div>
-      <div style="margin-top:2mm;font-size:10pt;line-height:1.45">
-        Per setup superiori a 5.000 € puoi rateizzare tramite Stripe: <b>${escapeHtml(
-          formatEuro(rateOggi30)
-        )}</b> oggi (30%) e <b>${escapeHtml(formatEuro(rateResto70))}</b> nel restante 70% in 3 o 6 rate mensili automatiche sulla stessa carta.
-        Le rate non sono cumulabili con gli sconti del 3% o 5%. I canoni mensili ricorrenti (se presenti) restano addebitati mese per mese.
+        <div class="box" style="background:var(--mc-green-bg);border:1px solid rgba(45,122,62,0.25)">
+          <div class="caps" style="font-size:8pt;color:#2D7A3E">RATEIZZAZIONE SU CARTA (30% + 3/6 RATE)</div>
+          <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+            30% oggi e restante 70% in 3 o 6 rate mensili automatiche sulla stessa carta. Le rate non sono cumulabili con lo sconto del 5%.
+          </div>
+          <div style="margin-top:4mm;border-top:1px solid rgba(45,122,62,0.2);padding-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Oggi alla firma</div>
+            <div style="font-weight:800;font-size:13pt;color:var(--mc-black)">${escapeHtml(formatEuro(rateOggi30))}</div>
+          </div>
+          <div style="margin-top:3mm">
+            <div class="caps muted" style="font-size:7.5pt">Poi</div>
+            <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(rateResto70))}</div>
+            <div class="muted" style="font-style:italic;font-size:9pt;margin-top:1mm">
+              in 3 o 6 rate mensili. I canoni mensili ricorrenti (se presenti) restano addebitati mese per mese.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -1169,8 +1158,8 @@ function renderPage7(quote: QuoteWithRelations) {
       </div>
     </div>
 
-    <div class="no-break" style="margin-top:6mm">
-      <div class="caps orange" style="font-size:8pt;margin-bottom:2mm">DOMANDE CHE CI FANNO TUTTI</div>
+    <div class="no-break" style="margin-top:10mm">
+      <div class="caps orange" style="font-size:11pt;margin-bottom:4mm;letter-spacing:0.12em">DOMANDE CHE CI FANNO TUTTI</div>
 
       <div class="no-break box box-warm" style="border:1px solid #EDE6D6;margin-top:3mm">
         <div style="font-weight:800;font-size:11pt">E se il mio team non vuole usare il CRM?</div>

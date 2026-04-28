@@ -26,6 +26,7 @@ export async function generatePdf(quote: QuoteWithRelations): Promise<Buffer> {
           args: chromium.args,
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || (await chromium.executablePath()),
           headless: true,
+          ignoreHTTPSErrors: true,
         };
       })()
     : {
@@ -33,7 +34,11 @@ export async function generatePdf(quote: QuoteWithRelations): Promise<Buffer> {
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
       };
 
-  const browser = await puppeteer.launch(launchOpts);
+  const browser = await puppeteer.launch({
+    ...launchOpts,
+    // Evita hang infiniti in ambienti serverless sotto carico
+    protocolTimeout: 60_000,
+  } as any);
 
   try {
     const page = await browser.newPage();

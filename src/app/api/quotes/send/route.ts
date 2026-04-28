@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
+import { assertCsrf } from "@/lib/security/csrf";
 
 /** Base API CRM (stessa documentazione PDF "Documentazione API - CRM Metodo Cantiere") */
 const FW360_API_BASE =
@@ -89,6 +90,20 @@ function deriveFwNomeCognomeRagioneSociale(quote: {
 function fwTempPassword(): string {
   const b = randomBytes(16).toString("base64url").replace(/[^a-zA-Z0-9]/g, "");
   return `McP${b.slice(0, 18)}9!x`;
+}
+
+function publicPdfToken(): string {
+  // Token URL-safe per accesso al PDF pubblico (non derivabile dal quoteNumber).
+  return randomBytes(24).toString("base64url");
+}
+
+function escapeHtml(s: string) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /** Formato esempio documentazione: +391234567890 */
@@ -207,6 +222,11 @@ async function fwRegisterOrGetCustomerId(opts: {
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  try {
+    assertCsrf(req);
+  } catch {
+    return NextResponse.json({ error: "CSRF" }, { status: 403 });
+  }
 
   await ensureQuoteSchema();
 
@@ -305,12 +325,18 @@ export async function POST(req: Request) {
       sentAt: now,
       expiresAt: addDays(now, 30),
       crmCustomerId: customerId,
+      publicPdfToken: publicPdfToken(),
     },
     select: { id: true },
   });
 
   // Step 4 — Crea voce cronologia in Framework360
-  const pdfUrl = `${appUrl}/api/public/pdf/${quote.quoteNumber}`;
+  const tokenRow = await prisma.quote.findUnique({
+    where: { id: locked.id },
+    select: { publicPdfToken: true },
+  });
+  const t = tokenRow?.publicPdfToken || "";
+  const pdfUrl = `${appUrl}/api/public/pdf/${quote.quoteNumber}${t ? `?t=${encodeURIComponent(t)}` : ""}`;
   await fetch(`${FW360_API_BASE}/customers/history/create`, {
     method: "POST",
     headers: {
@@ -319,7 +345,11 @@ export async function POST(req: Request) {
     },
     body: new URLSearchParams({
       customer_id: customerId,
-      title: "Preventivo " + quote.quoteNumber + " " + (quote.clientCompany || quote.clientName),
+      title:
+        "Preventivo " +
+        quote.quoteNumber +
+        " " +
+        escapeHtml(String(quote.clientCompany || quote.clientName || "")),
       content: "Preventivo inviato. <a href=\"" + pdfUrl + "\" target=\"_blank\">Apri PDF</a>",
       date: new Date().toISOString().split("T")[0],
     }),

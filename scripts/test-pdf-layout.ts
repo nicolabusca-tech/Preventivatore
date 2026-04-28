@@ -9,6 +9,7 @@ import type { Quote, QuoteItem, User } from "@prisma/client";
 const quote = {
   id: "q1",
   quoteNumber: "QTEST-0001",
+  publicPdfToken: null,
   userId: "u1",
   dceProductId: null,
   clientName: "Test",

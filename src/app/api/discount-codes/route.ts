@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { assertCsrf } from "@/lib/security/csrf";
 
 // GET: admin vede tutti i codici, commerciale può solo validarli (vedi /validate)
 export async function GET() {
@@ -21,6 +22,11 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== "admin") {
     return NextResponse.json({ error: "Solo admin" }, { status: 403 });
+  }
+  try {
+    assertCsrf(req);
+  } catch {
+    return NextResponse.json({ error: "CSRF" }, { status: 403 });
   }
 
   const data = await req.json();

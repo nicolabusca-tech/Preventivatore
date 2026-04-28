@@ -23,6 +23,9 @@ export async function GET(
 
   await ensureQuoteSchema();
 
+  const url = new URL(req.url);
+  const providedToken = (url.searchParams.get("t") || "").trim();
+
   const quote = await prisma.quote.findUnique({
     where: { quoteNumber },
     include: {
@@ -38,6 +41,17 @@ export async function GET(
     return NextResponse.json({ error: "Preventivo non trovato" }, { status: 404 });
   }
   if (quote.status !== "sent" && quote.status !== "viewed") {
+    return NextResponse.json({ error: "Preventivo non trovato" }, { status: 404 });
+  }
+
+  // Se il preventivo ha un token, l’accesso pubblico richiede ?t=...
+  // Per i preventivi legacy (senza token), si può consentire temporaneamente l’accesso
+  // impostando MC_ALLOW_LEGACY_PUBLIC_PDF=1.
+  const storedToken = (quote as any).publicPdfToken as string | null | undefined;
+  if (storedToken && providedToken !== storedToken) {
+    return NextResponse.json({ error: "Preventivo non trovato" }, { status: 404 });
+  }
+  if (!storedToken && process.env.MC_ALLOW_LEGACY_PUBLIC_PDF !== "1") {
     return NextResponse.json({ error: "Preventivo non trovato" }, { status: 404 });
   }
 

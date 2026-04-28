@@ -26,6 +26,7 @@ export async function ensureQuoteSchema() {
       `ALTER TABLE "Quote" ADD COLUMN IF NOT EXISTS "clientPostalCode" TEXT`,
       `ALTER TABLE "Quote" ADD COLUMN IF NOT EXISTS "clientCity" TEXT`,
       `ALTER TABLE "Quote" ADD COLUMN IF NOT EXISTS "clientProvince" TEXT`,
+      `ALTER TABLE "Quote" ADD COLUMN IF NOT EXISTS "publicPdfToken" TEXT`,
       `ALTER TABLE "Quote" ADD COLUMN IF NOT EXISTS "scontoAiVocaleAnnuale" BOOLEAN DEFAULT FALSE`,
       `ALTER TABLE "Quote" ADD COLUMN IF NOT EXISTS "scontoWaAnnuale" BOOLEAN DEFAULT FALSE`,
       `UPDATE "Quote"

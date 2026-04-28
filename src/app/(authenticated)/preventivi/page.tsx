@@ -87,6 +87,7 @@ export default function PreventiviPage() {
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const isAdmin = session?.user?.role === "admin";
 
@@ -97,10 +98,33 @@ export default function PreventiviPage() {
 
   async function fetchQuotes() {
     setLoading(true);
-    const res = await fetch("/api/quotes");
-    const data = await res.json();
-    setQuotes(Array.isArray(data) ? data : []);
-    setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/quotes");
+      const raw = await res.text().catch(() => "");
+      if (!res.ok) {
+        let message = `Errore caricamento preventivi (HTTP ${res.status}).`;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.error) message = String(parsed.error);
+          } catch {
+            message = `${message} ${raw.slice(0, 220)}`;
+          }
+        }
+        setQuotes([]);
+        setError(message);
+        return;
+      }
+
+      const data = raw ? JSON.parse(raw) : [];
+      setQuotes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setQuotes([]);
+      setError(e instanceof Error ? e.message : "Errore inatteso");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function matchesFilter(quote: Quote) {
@@ -299,6 +323,11 @@ export default function PreventiviPage() {
 
       {/* Tabella preventivi */}
       <div className="card overflow-hidden">
+        {error && (
+          <div className="p-4">
+            <div className="alert alert-danger">{error}</div>
+          </div>
+        )}
         {loading ? (
           <div className="p-12 text-center" style={{ color: "var(--mc-text-muted)" }}>
             <div className="inline-flex items-center gap-2">

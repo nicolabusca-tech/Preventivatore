@@ -7,6 +7,8 @@
 //   (CRM -20%, AI Vocale -15%, WhatsApp -15%) - canone diventa una tantum
 // - Sistema bonus a soglie (3+ / 5+ / 7+ moduli con almeno un canone)
 // - Indicatore "manca X moduli per prossimo sconto/soglia"
+//
+// v1.5: niente più sconto automatico a volume sul listino; al suo posto solo Credito MC (10% sul netto setup modulo listino).
 
 // ============================================================
 // TYPES
@@ -95,47 +97,59 @@ export function formatEuro(value: number): string {
 }
 
 // ============================================================
-// SCONTO VOLUME (automatico, su moduli setup)
+// SCONTO VOLUME — dismesso (solo Credito MC, vedi sotto)
 // ============================================================
-// 3+ moduli setup distinti = -5%
-// 5+ moduli setup distinti = -10%
-// I canoni mensili NON contano nel volume.
+// Manteniamo la firma per compatibilità con codice esistente; non applica più sconti automatici.
 
-export function calcolaScontoVolume(items: SelectedItem[]): DiscountResult {
-  const setupItems = items.filter((i) => !i.isMonthly);
-  const numSetup = setupItems.length;
-  const setupTotal = setupItems.reduce((sum, i) => sum + i.price * i.qty, 0);
-
-  if (numSetup >= 5) {
-    const amount = Math.round(setupTotal * 0.1);
-    return {
-      type: "volume_10",
-      amount,
-      percent: 10,
-      label: "Sconto volume −10% (5+ moduli)",
-    };
-  }
-  if (numSetup >= 3) {
-    const amount = Math.round(setupTotal * 0.05);
-    return {
-      type: "volume_5",
-      amount,
-      percent: 5,
-      label: "Sconto volume −5% (3+ moduli)",
-    };
-  }
+export function calcolaScontoVolume(_items: SelectedItem[]): DiscountResult {
   return { type: "none", amount: 0, percent: 0, label: "" };
 }
 
-// Quanti moduli mancano per il prossimo gradino di sconto volume.
-// Restituisce null se siamo già al massimo (10%).
+/** @deprecated Non più usato (nessuno sconto a gradini sul listino). */
 export function prossimoScontoVolume(
-  items: SelectedItem[]
+  _items: SelectedItem[]
 ): { needed: number; nextPercent: number } | null {
-  const numSetup = items.filter((i) => !i.isMonthly).length;
-  if (numSetup >= 5) return null;
-  if (numSetup >= 3) return { needed: 5 - numSetup, nextPercent: 10 };
-  return { needed: 3 - numSetup, nextPercent: 5 };
+  return null;
+}
+
+// ============================================================
+// CREDITO METODO CANTIERE (10% sul netto setup modulo listino)
+// ============================================================
+// Base: somma voci setup listino (`setupBeforeDiscount`), meno voucher Diagnosi/Audit già versati,
+// meno sconto manuale/codice applicato al setup. I canoni in anticipo annuo non entrano in setupBeforeDiscount.
+// Preventivi storici con discountType volume_*: il “sconto volume” non decurtava il listino → non lo sottraiamo dalla base credito.
+
+const VOUCHER_DIAGNOSI_SETUP = 497;
+const VOUCHER_AUDIT_SETUP = 147;
+
+export type CreditoMcInput = {
+  setupBeforeDiscount: number;
+  diagnosiGiaPagata: boolean;
+  voucherAuditApplied: boolean;
+  discountType: string | null | undefined;
+  discountAmount: number | null | undefined;
+  discountPercent: number | null | undefined;
+};
+
+export function computeCreditoMetodoCantiere(input: CreditoMcInput): number {
+  const gross = Math.max(0, Math.round(Number(input.setupBeforeDiscount) || 0));
+  let afterVouchers = gross;
+  if (input.diagnosiGiaPagata) {
+    afterVouchers = Math.max(0, afterVouchers - VOUCHER_DIAGNOSI_SETUP);
+  }
+  if (input.voucherAuditApplied) {
+    afterVouchers = Math.max(0, afterVouchers - VOUCHER_AUDIT_SETUP);
+  }
+
+  const isVolumeLegacy =
+    input.discountType === "volume_5" || input.discountType === "volume_10";
+  const stored = Math.max(0, Math.round(Number(input.discountAmount) || 0));
+  const pct = Math.max(0, Math.round(Number(input.discountPercent) || 0));
+  const fromPct = pct > 0 ? Math.round((afterVouchers * pct) / 100) : 0;
+  const rawDiscount = stored > 0 ? Math.min(stored, afterVouchers) : fromPct;
+  const setupDiscount = isVolumeLegacy ? 0 : Math.min(rawDiscount, afterVouchers);
+  const base = Math.max(0, afterVouchers - setupDiscount);
+  return Math.round(base * 0.1);
 }
 
 // ============================================================

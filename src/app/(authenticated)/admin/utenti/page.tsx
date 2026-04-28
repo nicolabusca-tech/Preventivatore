@@ -143,6 +143,66 @@ export default function AdminUtentiPage() {
     }
   }
 
+  async function changeRole(user: UserRow) {
+    if (user.id === session?.user?.id) {
+      setMessage({ type: "danger", text: "Non puoi cambiare il tuo ruolo." });
+      return;
+    }
+    const next = window.prompt(
+      `Ruolo per ${user.name} (scrivi: admin oppure commerciale):`,
+      user.role || "commerciale"
+    );
+    if (!next) return;
+    const role = next.trim();
+    if (role !== "admin" && role !== "commerciale") {
+      setMessage({ type: "danger", text: "Ruolo non valido. Usa: admin o commerciale." });
+      return;
+    }
+    const ok = window.confirm(
+      `Confermi cambio ruolo per ${user.name} → ${role}?`
+    );
+    if (!ok) return;
+
+    setMessage(null);
+    const res = await fetch(`/api/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    });
+    if (res.ok) {
+      setMessage({ type: "success", text: "Ruolo aggiornato." });
+      setTimeout(() => setMessage(null), 2500);
+      fetchUsers();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setMessage({ type: "danger", text: data?.error || "Errore aggiornando il ruolo." });
+    }
+  }
+
+  async function changeEmail(user: UserRow) {
+    const next = window.prompt(`Nuova email per ${user.name}:`, user.email);
+    if (!next) return;
+    const email = next.trim();
+    if (!email) return;
+    const ok = window.confirm(`Confermi cambio email per ${user.name} → ${email}?`);
+    if (!ok) return;
+
+    setMessage(null);
+    const res = await fetch(`/api/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (res.ok) {
+      setMessage({ type: "success", text: "Email aggiornata." });
+      setTimeout(() => setMessage(null), 2500);
+      fetchUsers();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setMessage({ type: "danger", text: data?.error || "Errore aggiornando l'email." });
+    }
+  }
+
   const stats = useMemo(() => {
     return {
       total: users.length,
@@ -314,6 +374,20 @@ export default function AdminUtentiPage() {
                   </td>
                   <td className="text-right">
                     <div className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => changeRole(u)}
+                        className="btn-ghost text-xs px-2 py-1"
+                      >
+                        Ruolo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => changeEmail(u)}
+                        className="btn-ghost text-xs px-2 py-1"
+                      >
+                        Email
+                      </button>
                       <button
                         type="button"
                         onClick={() => resetPassword(u)}

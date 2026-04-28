@@ -2,19 +2,13 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
-  // Aggiornamento automatico stato "scaduto" per preventivi con expiresAt < now
-  await prisma.quote.updateMany({
-    where: {
-      expiresAt: { lt: new Date() },
-      status: { in: ["sent"] },
-    },
-    data: { status: "sent" },
-  });
+  await ensureQuoteSchema();
 
   const isAdmin = session.user.role === "admin";
   const userId = session.user.id;

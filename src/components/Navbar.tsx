@@ -208,6 +208,17 @@ export function Navbar() {
                     ))}
                   </div>
 
+                  <div className="py-1" style={{ borderBottom: "1px solid var(--mc-border)" }}>
+                    <Link
+                      href="/profilo"
+                      className="block px-4 py-2 text-sm transition-colors"
+                      style={{ color: "var(--mc-text)" }}
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Profilo
+                    </Link>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {

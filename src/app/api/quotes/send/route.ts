@@ -1,15 +1,13 @@
+import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 
-function splitName(fullName: string) {
-  const parts = (fullName || "").trim().split(/\s+/).filter(Boolean);
-  return {
-    firstname: parts[0] ?? "",
-    lastname: parts.slice(1).join(" ") ?? "",
-  };
-}
+/** Base API CRM (stessa documentazione PDF "Documentazione API - CRM Metodo Cantiere") */
+const FW360_API_BASE =
+  process.env.CRM_API_BASE?.replace(/\/$/, "") || "https://metodocantiere.it/m/api";
 
 function addDays(from: Date, days: number) {
   const d = new Date(from);
@@ -17,9 +15,200 @@ function addDays(from: Date, days: number) {
   return d;
 }
 
+function capitalizeWord(w: string) {
+  const t = (w || "").trim();
+  if (!t) return "";
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
+/** FW360 spesso rifiuta stringhe troppo corte, "-" o caratteri strani. */
+function sanitizeFwField(value: string, fallback: string): string {
+  let s = (value || "").trim();
+  const bad = new Set(["-", "—", ".", "..", "n/a", "na", "none", "null"]);
+  if (!s || bad.has(s.toLowerCase())) {
+    s = fallback;
+  }
+  s = s
+    .replace(/[^\p{L}\p{N}\s'.-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (s.length < 2) {
+    s = fallback;
+  }
+  return s.slice(0, 120);
+}
+
+/**
+ * Deriva nome, cognome e ragione sociale come da documentazione FW360
+ * (POST /customers/registration — campi "nome", "cognome", "dati_fatturazione.ragione_sociale").
+ */
+function deriveFwNomeCognomeRagioneSociale(quote: {
+  clientName: string | null;
+  clientCompany: string | null;
+  clientEmail: string | null;
+}) {
+  const email = (quote.clientEmail || "").trim();
+  const rawName = (quote.clientName || "").trim();
+  const rawCompany = (quote.clientCompany || "").trim();
+
+  const parts = rawName.split(/\s+/).filter(Boolean);
+  let nome = parts[0] || "";
+  let cognome = parts.slice(1).join(" ") || "";
+
+  if (nome && !cognome) {
+    cognome = "Non indicato";
+  }
+
+  if (!nome && email) {
+    const local = email.split("@")[0]?.replace(/[.+_-]+/g, " ").trim() || "";
+    const tokens = local.split(/\s+/).filter(Boolean);
+    if (tokens[0]) {
+      nome = capitalizeWord(tokens[0]);
+      cognome = tokens.slice(1).map(capitalizeWord).join(" ") || "Da preventivo";
+    }
+  }
+
+  if (!nome) nome = "Cliente";
+  if (!cognome) cognome = "Non indicato";
+
+  let ragione_sociale =
+    rawCompany ||
+    rawName ||
+    `${nome} ${cognome}`.trim() ||
+    (email.includes("@")
+      ? `${email.split("@")[1] ?? "cliente"} (contatto web)`
+      : "Privato");
+
+  return {
+    nome: sanitizeFwField(nome, "Cliente"),
+    cognome: sanitizeFwField(cognome, "Non indicato"),
+    ragione_sociale: sanitizeFwField(ragione_sociale, "Privato"),
+  };
+}
+
+function fwTempPassword(): string {
+  const b = randomBytes(16).toString("base64url").replace(/[^a-zA-Z0-9]/g, "");
+  return `McP${b.slice(0, 18)}9!x`;
+}
+
+/** Formato esempio documentazione: +391234567890 */
+function formatFwTelefono(phone: string | null | undefined): string | undefined {
+  const raw = (phone || "").trim();
+  if (!raw) return undefined;
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 6 || digits.length > 15) return undefined;
+  if (raw.trim().startsWith("+")) return raw.trim().slice(0, 20);
+  if (digits.startsWith("39")) return `+${digits}`;
+  if (digits.startsWith("0")) return `+39${digits}`;
+  return `+39${digits}`;
+}
+
+function extractFwCustomerId(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const p = payload as Record<string, unknown>;
+  const d = p.data;
+  if (d && typeof d === "object") {
+    const id = (d as Record<string, unknown>).id;
+    if (id != null && id !== "") return String(id);
+  }
+  if (p.id != null && p.id !== "") return String(p.id);
+  return "";
+}
+
+/** Documentazione: GET /m/api/customers/get — id o email */
+async function fwGetCustomerIdByEmail(fwKey: string, email: string): Promise<string> {
+  const url = new URL(`${FW360_API_BASE}/customers/get`);
+  url.searchParams.set("email", email.trim());
+  const r = await fetch(url.toString(), {
+    method: "GET",
+    headers: { "X-Fw360-Key": fwKey },
+    signal: AbortSignal.timeout(12000),
+  });
+  const data = await r.json().catch(() => null);
+  if (!r.ok || !data) return "";
+  return extractFwCustomerId(data);
+}
+
+/**
+ * Documentazione ufficiale: POST /customers/registration con JSON:
+ * nome, cognome, email, password (obbligatori), telefono, provenienza (default 6), dati_fatturazione, …
+ */
+async function fwRegisterOrGetCustomerId(opts: {
+  fwKey: string;
+  nome: string;
+  cognome: string;
+  ragione_sociale: string;
+  email: string;
+  phone?: string | null;
+}): Promise<{ customerId: string; raw: any }> {
+  const email = (opts.email || "").trim();
+
+  const existing = await fwGetCustomerIdByEmail(opts.fwKey, email);
+  if (existing) {
+    return { customerId: existing, raw: { status: 1, data: { id: existing }, reusedByEmail: true } };
+  }
+
+  const provenienza = Number.parseInt(process.env.FW360_CUSTOMER_PROVENIENZA || "6", 10);
+  const prov = Number.isFinite(provenienza) && provenienza > 0 ? provenienza : 6;
+  const password = fwTempPassword();
+  const telefono = formatFwTelefono(opts.phone);
+
+  const jsonPrimary: Record<string, unknown> = {
+    nome: opts.nome,
+    cognome: opts.cognome,
+    email,
+    password,
+    provenienza: prov,
+    dati_fatturazione: {
+      ragione_sociale: opts.ragione_sociale,
+    },
+  };
+  if (telefono) jsonPrimary.telefono = telefono;
+
+  const jsonMinimal: Record<string, unknown> = {
+    nome: opts.nome,
+    cognome: opts.cognome,
+    email,
+    password,
+    provenienza: prov,
+  };
+
+  async function callRegistrationJson(body: Record<string, unknown>) {
+    const r = await fetch(`${FW360_API_BASE}/customers/registration`, {
+      method: "POST",
+      headers: {
+        "X-Fw360-Key": opts.fwKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await r.json().catch(() => null);
+    return { ok: r.ok, status: r.status, data };
+  }
+
+  let lastRaw: any = null;
+  for (const body of [jsonPrimary, jsonMinimal]) {
+    const res = await callRegistrationJson(body);
+    lastRaw = res.data;
+    const id = extractFwCustomerId(res.data);
+    const fwErr =
+      res.data &&
+      typeof res.data === "object" &&
+      (res.data as { status?: unknown }).status === 0;
+    if (res.ok && id && !fwErr) {
+      return { customerId: id, raw: res.data };
+    }
+  }
+
+  return { customerId: "", raw: lastRaw };
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+
+  await ensureQuoteSchema();
 
   const body = await req.json().catch(() => null);
   const quoteId = body?.quoteId;
@@ -41,6 +230,7 @@ export async function POST(req: Request) {
       totalAnnual: true,
       totalSetup: true,
       status: true,
+      crmCustomerId: true,
     },
   });
 
@@ -56,18 +246,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Email cliente mancante" }, { status: 400 });
   }
 
-  // Step 2 — Blocca il preventivo
-  const now = new Date();
-  const locked = await prisma.quote.update({
-    where: { id: quote.id },
-    data: {
-      status: "sent",
-      sentAt: now,
-      expiresAt: addDays(now, 30),
-    },
-    select: { id: true },
-  });
-
   const fwKey = process.env.FW360_API_KEY;
   if (!fwKey) {
     return NextResponse.json({ error: "FW360_API_KEY mancante" }, { status: 500 });
@@ -78,44 +256,62 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "NEXT_PUBLIC_APP_URL mancante" }, { status: 500 });
   }
 
-  // Step 3 — Upsert cliente in Framework360
-  const { firstname, lastname } = splitName(quote.clientName);
-  const fw360Response = await fetch("https://metodocantiere.it/m/api/customers/registration", {
-    method: "POST",
-    headers: {
-      "X-Fw360-Key": fwKey,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      firstname,
-      lastname,
-      email: quote.clientEmail.trim(),
-      ...(quote.clientPhone ? { phone: quote.clientPhone } : {}),
-      ...(quote.clientCompany ? { company: quote.clientCompany } : {}),
-    }),
-  });
+  // Step 2 — Cliente FW360: se già legato al CRM, salta la registration
+  const existingCrm = (quote.crmCustomerId || "").trim();
+  let customerId = existingCrm;
+  let registrationRaw: any = null;
 
-  const fw360Data = await fw360Response.json().catch(() => null);
-  const customerId = fw360Data?.data?.id ? String(fw360Data.data.id) : "";
-  if (!fw360Response.ok || !customerId) {
-    console.error("FW360 registration failed", {
-      ok: fw360Response.ok,
-      status: fw360Response.status,
-      body: fw360Data,
-      quoteId: locked.id,
+  if (!customerId) {
+    const person = deriveFwNomeCognomeRagioneSociale({
+      clientName: quote.clientName,
+      clientCompany: quote.clientCompany,
+      clientEmail: quote.clientEmail,
     });
-    return NextResponse.json({ error: "Errore Framework360 (registrazione cliente)" }, { status: 502 });
+    const reg = await fwRegisterOrGetCustomerId({
+      fwKey,
+      nome: person.nome,
+      cognome: person.cognome,
+      ragione_sociale: person.ragione_sociale,
+      email: quote.clientEmail.trim(),
+      phone: quote.clientPhone,
+    });
+    customerId = reg.customerId;
+    registrationRaw = reg.raw;
   }
 
-  await prisma.quote.update({
-    where: { id: locked.id },
-    data: { crmCustomerId: customerId },
+  if (!customerId) {
+    console.error("FW360 registration failed", {
+      body: registrationRaw,
+      quoteId: quote.id,
+    });
+    const msg =
+      registrationRaw?.message ||
+      registrationRaw?.error ||
+      registrationRaw?.data?.message;
+    return NextResponse.json(
+      {
+        error: msg ? `Framework360: ${msg}` : "Errore Framework360 (registrazione cliente)",
+      },
+      { status: 502 }
+    );
+  }
+
+  // Step 3 — Blocca il preventivo SOLO se FW360 è ok
+  const now = new Date();
+  const locked = await prisma.quote.update({
+    where: { id: quote.id },
+    data: {
+      status: "sent",
+      sentAt: now,
+      expiresAt: addDays(now, 30),
+      crmCustomerId: customerId,
+    },
     select: { id: true },
   });
 
   // Step 4 — Crea voce cronologia in Framework360
   const pdfUrl = `${appUrl}/api/public/pdf/${quote.quoteNumber}`;
-  await fetch("https://metodocantiere.it/m/api/customers/history/create", {
+  await fetch(`${FW360_API_BASE}/customers/history/create`, {
     method: "POST",
     headers: {
       "X-Fw360-Key": fwKey,
@@ -132,7 +328,7 @@ export async function POST(req: Request) {
   });
 
   // Step 5 — Aggiorna campi extra del cliente (per automazione email)
-  await fetch("https://metodocantiere.it/m/api/customers/update", {
+  await fetch(`${FW360_API_BASE}/customers/update`, {
     method: "POST",
     headers: {
       "X-Fw360-Key": fwKey,
@@ -151,4 +347,3 @@ export async function POST(req: Request) {
   // Step 6 — Response
   return NextResponse.json({ success: true, status: "sent" });
 }
-

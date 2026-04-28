@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { computeCreditoMetodoCantiere } from "@/lib/discounts";
 import { parseRoiSnapshot } from "@/lib/roi";
 import { QuoteEditor, type QuoteEditorInitialData } from "@/components/QuoteEditor";
 
@@ -63,8 +64,6 @@ type QuoteDetail = {
 };
 
 const discountTypeLabels: Record<string, string> = {
-  volume_5: "Sconto volume 5% (3+ moduli)",
-  volume_10: "Sconto volume 10% (5+ moduli)",
   manual: "Codice sconto manuale",
 };
 
@@ -279,6 +278,19 @@ export default function DettaglioPreventivoPage() {
   const fullAddress = buildFullAddress(quote);
   const roiSnap = parseRoiSnapshot(quote.roiSnapshot);
   const showSetupSection = setupLineItems.length > 0 || quote.diagnosiGiaPagata;
+
+  const grossSetupForCredito =
+    quote.setupBeforeDiscount > 0
+      ? quote.setupBeforeDiscount
+      : setupLineItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const creditoMetodoCantiere = computeCreditoMetodoCantiere({
+    setupBeforeDiscount: grossSetupForCredito,
+    diagnosiGiaPagata: quote.diagnosiGiaPagata,
+    voucherAuditApplied: quote.voucherAuditApplied,
+    discountType: quote.discountType,
+    discountAmount: quote.discountAmount,
+    discountPercent: quote.discountPercent,
+  });
 
   const statusBadge = (() => {
     if (quote.status === "sent") return { label: "Inviato", class: "badge-sent" };
@@ -624,33 +636,6 @@ export default function DettaglioPreventivoPage() {
                             </span>
                           </div>
                         )}
-                      {(quote.discountType === "volume_5" || quote.discountType === "volume_10") &&
-                        quote.discountAmount > 0 && (
-                          <div
-                            className="flex justify-between"
-                            style={{ color: "var(--mc-text-secondary)" }}
-                          >
-                            <span className="text-xs">Credito MC (10% sul setup, 12 mesi)</span>
-                            <span
-                              className="font-semibold text-xs tabular-nums"
-                              style={{ color: "var(--mc-success)" }}
-                            >
-                              {formatEuro(
-                                Math.max(
-                                  0,
-                                  Math.round(
-                                    (Math.max(
-                                      0,
-                                      (quote.setupBeforeDiscount || 0) -
-                                        (quote.diagnosiGiaPagata ? DIAGNOSI_VOUCHER_AMOUNT : 0) -
-                                        (quote.voucherAuditApplied ? AUDIT_VOUCHER_AMOUNT : 0)
-                                    ) * 0.1)
-                                  )
-                                )
-                              )}
-                            </span>
-                          </div>
-                        )}
                       {quote.voucherAuditApplied && (
                         <div
                           className="flex justify-between"
@@ -770,6 +755,27 @@ export default function DettaglioPreventivoPage() {
                   </span>
                 </div>
               </>
+            )}
+
+            {creditoMetodoCantiere > 0 && (
+              <div
+                className="mt-4 rounded-lg p-4"
+                style={{
+                  background: "linear-gradient(135deg, rgba(45, 122, 62, 0.14), rgba(45, 122, 62, 0.05))",
+                  border: "1px solid rgba(45, 122, 62, 0.4)",
+                }}
+              >
+                <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "#2D7A3E" }}>
+                  Credito MC
+                </div>
+                <div className="text-xl font-bold tabular-nums mt-1" style={{ color: "#2D7A3E" }}>
+                  {formatEuro(creditoMetodoCantiere)}
+                </div>
+                <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--mc-text-muted)" }}>
+                  10% sul netto setup modulo listino (dopo voucher e sconto codice sul setup). I canoni in anticipo annuo
+                  non entrano in questa base. Spendibile entro 12 mesi su qualunque voce del listino.
+                </p>
+              </div>
             )}
 
             <div

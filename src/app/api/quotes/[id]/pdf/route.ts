@@ -3,10 +3,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generatePdf } from "@/lib/pdf/generate-pdf";
+import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+
+  await ensureQuoteSchema();
 
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },

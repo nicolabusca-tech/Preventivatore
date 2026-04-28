@@ -1,4 +1,5 @@
 import { Quote, QuoteItem, User } from "@prisma/client";
+import { canonePrepayFromMonthly, computeCreditoMetodoCantiere } from "@/lib/discounts";
 import { parseRoiSnapshot } from "@/lib/roi";
 import {
   addDays,
@@ -10,7 +11,6 @@ import {
 } from "./helpers";
 import { generateStyles } from "./styles";
 
-const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 const DIAGNOSI_VOUCHER_AMOUNT = 497;
 
@@ -38,12 +38,51 @@ function splitItems(quote: QuoteWithRelations) {
   return { setup, monthly };
 }
 
+/** Blocco tabellare PDF: canone annuale anticipato (stesso layout del CRM). */
+function pdfCanoneAnticipatoRows(args: {
+  titolo: string;
+  rigaLordoLabel: string;
+  rigaScontoLabel: string;
+  fullAnnual: number;
+  discountAmount: number;
+  netOneTime: number;
+}): string {
+  return `
+          <tr><td colspan="2" style="border-bottom:none;height:5mm"></td></tr>
+          <tr>
+            <td colspan="2" style="border-bottom:none;padding-bottom:2mm">
+              <div class="caps" style="font-size:8pt;font-weight:800;letter-spacing:0.14em;color:#2D7A3E">
+                ${args.titolo}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">${escapeHtml(args.rigaLordoLabel)}</td>
+            <td class="right" style="border-bottom:none;color:rgba(250,248,244,0.9)"><b>${escapeHtml(
+              formatEuro(args.fullAnnual)
+            )}</b></td>
+          </tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">${escapeHtml(args.rigaScontoLabel)}</td>
+            <td class="right" style="border-bottom:none;color:var(--mc-orange)"><b>- ${escapeHtml(
+              formatEuro(args.discountAmount)
+            )}</b></td>
+          </tr>
+          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18);padding-top:2mm"></td></tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale canone annuale anticipato</td>
+            <td class="right" style="border-bottom:none;color:rgba(250,248,244,0.95)"><b>${escapeHtml(
+              formatEuro(args.netOneTime)
+            )}</b></td>
+          </tr>`;
+}
+
 function computeSetupTotals(quote: QuoteWithRelations) {
   const setupBefore = quote.setupBeforeDiscount || quote.totalSetup;
   const voucherDiagnosi = quote.diagnosiGiaPagata ? DIAGNOSI_VOUCHER_AMOUNT : 0;
 
   const baseAfterVoucher = Math.max(0, setupBefore - voucherDiagnosi);
-  const isVolume =
+  const isVolumeLegacy =
     quote.discountType === "volume_5" || quote.discountType === "volume_10";
   const storedDiscount = quote.discountAmount ?? 0;
   const rawDiscountFromQuote =
@@ -52,20 +91,29 @@ function computeSetupTotals(quote: QuoteWithRelations) {
       : quote.discountPercent > 0
         ? Math.round(baseAfterVoucher * (quote.discountPercent / 100))
         : 0;
-  // Lo sconto volume resta conteggiato lato commerciale ma non si scala dal totale setup: diventa Credito MC.
-  const discountAmount = isVolume ? 0 : rawDiscountFromQuote;
+  // Storico volume_*: lo sconto non era applicato al totale setup in fattura preventivo.
+  const discountAmount = isVolumeLegacy ? 0 : rawDiscountFromQuote;
 
   let totalSetup = baseAfterVoucher - discountAmount;
   if (quote.voucherAuditApplied) totalSetup -= 147;
   if (totalSetup < 0) totalSetup = 0;
 
-  const afterAudit = quote.voucherAuditApplied ? Math.max(0, baseAfterVoucher - 147) : baseAfterVoucher;
+  const grossSetupModuli = Math.max(0, Math.round(Number(quote.setupBeforeDiscount) || 0));
+  const creditoMetodoCantiere = computeCreditoMetodoCantiere({
+    setupBeforeDiscount: grossSetupModuli > 0 ? grossSetupModuli : Math.max(0, setupBefore),
+    diagnosiGiaPagata: !!quote.diagnosiGiaPagata,
+    voucherAuditApplied: !!quote.voucherAuditApplied,
+    discountType: quote.discountType,
+    discountAmount: quote.discountAmount,
+    discountPercent: quote.discountPercent,
+  });
+
   return {
     setupBefore,
     voucherDiagnosi,
     discountAmount,
     totalSetup,
-    creditoMetodoCantiere: Math.round(afterAudit * 0.1),
+    creditoMetodoCantiere,
   };
 }
 
@@ -536,9 +584,12 @@ function renderPage5(quote: QuoteWithRelations) {
           formatEuro(Math.max(0, Math.round(deltaPrimoAnno ?? 0)))
         )}
       </div>
-      <div style="margin-top:2mm;font-size:10pt">
-        Investimento primo anno: <b>${escapeHtml(formatEuro(investimentoPrimoAnno || 0))}</b> ·
-        ROI: <b>${roi != null ? escapeHtml(roi.toFixed(2)) : "—"} ×</b>
+      <div class="muted" style="margin-top:2mm;font-style:italic;font-size:9pt">
+        Nota: in questa pagina ti mostriamo il <b>perché</b> dei numeri (cosa stai guadagnando e cosa stai perdendo).
+        Il valore ROI completo e l’investimento del primo anno li trovi dopo il riepilogo economico, insieme alla nostra offerta.
+      </div>
+      <div class="muted" style="margin-top:1.5mm;font-style:italic;font-size:9pt">
+        In più, c’è anche un <b>credito riutilizzabile</b> per i prossimi 12 mesi sul listino: lo quantifichiamo nel riepilogo economico.
       </div>
     </div>
     `
@@ -567,12 +618,15 @@ function renderPage5(quote: QuoteWithRelations) {
         </div>
         ${
           perditaContratti != null
-            ? `<div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">Stima prudente:</div>
+            ? `<div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">Stima prudente (danno evitato):</div>
         <div style="margin-top:1mm;font-weight:800;color:var(--mc-red)">Perdita stimata: ${escapeHtml(
                 formatEuro(Math.round(perditaContratti))
               )}/anno</div>`
             : ""
         }
+        <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
+          Questa stima è un ordine di grandezza del margine che oggi lasci sul tavolo per inerzia di processo: non è il calcolo ROI e non dipende dai moduli scelti.
+        </div>
       </div>
       `
           : ""
@@ -611,17 +665,63 @@ function renderPage6(quote: QuoteWithRelations) {
 
   const setupTotals = computeSetupTotals(quote);
 
-  const dceMonthly = quote.items
-    .filter((i) => i.isMonthly && DCE_ALLOWED_CODES.includes(i.productCode as any))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+  /** Tutti i canoni addebitati mese per mese (Direzione DCE, CRM se non anticipato, ecc.) — allineato a quote.totalMonthly. */
+  const canoniMensiliRicorrenti =
+    typeof quote.totalMonthly === "number" ? Math.max(0, quote.totalMonthly) : 0;
 
   const crmMonthlyFromItems = quote.items
     .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_CRM"))
     .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-  const hasCrmAnnualPrepay = !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0;
-  const crmAnnualFull = hasCrmAnnualPrepay ? crmMonthlyFromItems * 12 : 0;
-  const crmAnnualDiscount = hasCrmAnnualPrepay ? Math.round(crmAnnualFull * 0.2) : 0;
-  const crmAnnualNet = hasCrmAnnualPrepay ? crmAnnualFull - crmAnnualDiscount : 0;
+  const aiMonthlyFromItems = quote.items
+    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_AI"))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+  const waMonthlyFromItems = quote.items
+    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_WA"))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+
+  const crmPrepay =
+    !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0
+      ? canonePrepayFromMonthly(crmMonthlyFromItems, "CRM")
+      : null;
+  const aiPrepay =
+    !!quote.scontoAiVocaleAnnuale && aiMonthlyFromItems > 0
+      ? canonePrepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
+      : null;
+  const waPrepay =
+    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? canonePrepayFromMonthly(waMonthlyFromItems, "WA") : null;
+
+  const crmAnticipatoHtml = crmPrepay
+    ? pdfCanoneAnticipatoRows({
+        titolo: "HAI SCELTO IL PAGAMENTO ANNUALE ANTICIPATO DEL CANONE CRM",
+        rigaLordoLabel: "Canone CRM annuale (12 mesi anticipati)",
+        rigaScontoLabel: "Sconto pagamento anticipato 20%",
+        fullAnnual: crmPrepay.fullAnnual,
+        discountAmount: crmPrepay.discountAmount,
+        netOneTime: crmPrepay.netOneTime,
+      })
+    : "";
+
+  const aiAnticipatoHtml = aiPrepay
+    ? pdfCanoneAnticipatoRows({
+        titolo: "HAI SCELTO IL PAGAMENTO ANNUALE ANTICIPATO DEL CANONE AI VOCALE",
+        rigaLordoLabel: "Canone AI Vocale annuale (12 mesi anticipati)",
+        rigaScontoLabel: "Sconto pagamento anticipato 15%",
+        fullAnnual: aiPrepay.fullAnnual,
+        discountAmount: aiPrepay.discountAmount,
+        netOneTime: aiPrepay.netOneTime,
+      })
+    : "";
+
+  const waAnticipatoHtml = waPrepay
+    ? pdfCanoneAnticipatoRows({
+        titolo: "HAI SCELTO IL PAGAMENTO ANNUALE ANTICIPATO DEL CANONE WHATSAPP",
+        rigaLordoLabel: "Canone WhatsApp annuale (12 mesi anticipati)",
+        rigaScontoLabel: "Sconto pagamento anticipato 15%",
+        fullAnnual: waPrepay.fullAnnual,
+        discountAmount: waPrepay.discountAmount,
+        netOneTime: waPrepay.netOneTime,
+      })
+    : "";
 
   const direttoreCosto = escapeHtml(formatEuro(primoAnnoCompleto));
   const stripeSetupSconto = Math.round(setupTotals.totalSetup * 0.97);
@@ -694,48 +794,18 @@ function renderPage6(quote: QuoteWithRelations) {
 
           <tr>
             <td colspan="2" style="border-bottom:none;padding-bottom:2mm">
-              <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">DIREZIONE MENSILE</div>
+              <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">CANONI MENSILI</div>
             </td>
           </tr>
           <tr>
-            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Direzione mensile</td>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale canoni mensili (addebito mese per mese)</td>
             <td class="right" style="border-bottom:none"><span style="font-size:16pt">${escapeHtml(
-              formatEuro(dceMonthly)
+              formatEuro(canoniMensiliRicorrenti)
             )} / mese</span></td>
           </tr>
-          ${
-            hasCrmAnnualPrepay
-              ? `
-          <tr><td colspan="2" style="border-bottom:none;height:5mm"></td></tr>
-          <tr>
-            <td colspan="2" style="border-bottom:none;padding-bottom:2mm">
-              <div class="caps" style="font-size:8pt;font-weight:800;letter-spacing:0.14em;color:#2D7A3E">
-                HAI SCELTO IL PAGAMENTO ANNUALE ANTICIPATO DEL CANONE CRM
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Canone CRM annuale (12 mesi anticipati)</td>
-            <td class="right" style="border-bottom:none;color:rgba(250,248,244,0.9)"><b>${escapeHtml(
-              formatEuro(crmAnnualFull)
-            )}</b></td>
-          </tr>
-          <tr>
-            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Sconto pagamento anticipato 20%</td>
-            <td class="right" style="border-bottom:none;color:var(--mc-orange)"><b>- ${escapeHtml(
-              formatEuro(crmAnnualDiscount)
-            )}</b></td>
-          </tr>
-          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18);padding-top:2mm"></td></tr>
-          <tr>
-            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale canone annuale anticipato</td>
-            <td class="right" style="border-bottom:none;color:rgba(250,248,244,0.95)"><b>${escapeHtml(
-              formatEuro(crmAnnualNet)
-            )}</b></td>
-          </tr>
-          `
-              : ""
-          }
+          ${crmAnticipatoHtml}
+          ${aiAnticipatoHtml}
+          ${waAnticipatoHtml}
 
           <tr><td colspan="2" style="border-bottom:none;height:5mm"></td></tr>
           <tr><td colspan="2" style="border-bottom:2.5pt solid rgba(250,248,244,0.35)"></td></tr>
@@ -749,7 +819,8 @@ function renderPage6(quote: QuoteWithRelations) {
         </tbody>
       </table>
       <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm;color:rgba(250,248,244,0.55)">
-        Quanto costa portare il tuo commerciale a lavorare come una macchina. Tutti gli importi sono al netto di IVA.
+        Il totale «primo anno» somma setup, eventuali canoni pagati in anticipo (CRM −20%, AI Vocale e WhatsApp −15%) e dodici rate dei canoni mensili ricorrenti: non coincide con l'importo una tantum alla firma, che è setup più solo le voci anticipate.
+        Tutti gli importi sono al netto di IVA.
       </div>
     </div>
 
@@ -759,42 +830,9 @@ function renderPage6(quote: QuoteWithRelations) {
       </div>
       <div style="margin-top:2mm;font-size:9.5pt;color:var(--mc-muted)">spendibile nei prossimi 12 mesi su nuovi acquisti</div>
       <div style="margin-top:3mm;font-size:9pt;line-height:1.45;color:var(--mc-black)">
-        Quando deciderai di aggiungere altri moduli al sistema
-        — AI Vocale Personalizzato, Bundle Multicanale, oppure
-        la Direzione mensile per il presidio strategico —
-        il Credito MC scala dall'investimento.
-      </div>
-    </div>
-
-    <div class="no-break" style="margin-top:8mm">
-      <div class="caps orange" style="font-size:8pt;margin-bottom:3mm">Modalità di pagamento e sconti</div>
-      <table>
-        <thead>
-          <tr>
-            <th style="background:var(--mc-beige);color:var(--mc-muted)">STANDARD</th>
-            <th style="background:var(--mc-green);color:#fff">STRIPE SETUP · -3%</th>
-            <th style="background:var(--mc-orange);color:#fff">ANTICIPATO 12 MESI · -5%</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Bonifico standard alla firma per il Setup. Direzione mensile addebitata mese per mese.</td>
-            <td style="background:var(--mc-green-bg)"><b>Setup ${escapeHtml(
-              formatEuro(stripeSetupSconto)
-            )}</b> via Stripe. Direzione mensile a parte.</td>
-            <td style="background:var(--mc-orange-light)"><b>${escapeHtml(
-              formatEuro(anticipatoSconto)
-            )}</b> (Setup + 12 mesi) in anticipo alla firma.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="no-break box" style="margin-top:6mm;background:var(--mc-beige);border:1px solid #EDE6D6">
-      <div class="caps muted" style="font-size:8pt">IN ALTERNATIVA: RATEIZZAZIONE SU CARTA DI CREDITO</div>
-      <div style="margin-top:2mm;font-size:10pt">
-        Per Setup superiori a 5.000 € puoi rateizzare con la tua carta di credito aziendale tramite Stripe: 30% all'accettazione del piano,
-        il restante 70% in 3 o 6 rate mensili automatiche sulla stessa carta. Le rate non sono cumulabili con gli sconti del 3% o 5%.
+        Il credito è il 10% sul netto setup modulo listino (dopo voucher Diagnosi/Audit e sconto codice sul setup); i canoni
+        in anticipo annuo non entrano in questa base. Spendibile entro 12 mesi su qualunque voce del listino — AI Vocale,
+        Bundle Multicanale, Direzione mensile e altro.
       </div>
     </div>
 
@@ -865,12 +903,136 @@ function renderPage6(quote: QuoteWithRelations) {
   `;
 }
 
+function renderPage8Roi(quote: QuoteWithRelations) {
+  const roiSnap = parseRoiSnapshot(quote.roiSnapshot);
+  const investimento = roiSnap?.valoreFatturatoProposta ?? null;
+  const roi = roiSnap?.indice ?? null;
+  const margineAttuale = roiSnap?.margineAnnuoBaseline ?? null;
+  const margineAtteso = roiSnap?.margineStimatoProposta ?? null;
+  const delta = margineAtteso != null && margineAttuale != null ? margineAtteso - margineAttuale : null;
+
+  // Il credito lo riprendiamo qui come leva, ma l’importo lo lasciamo al riepilogo economico (pag. 07).
+  const setupTotals = computeSetupTotals(quote);
+
+  return `
+  <section class="pdf-page">
+    ${pageHeader("08")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">08 ROI e investimento</div>
+    <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:6mm">
+      Prima la spiegazione, poi i numeri: come leggere il conto del primo anno
+    </div>
+
+    <div class="no-break box" style="background:var(--mc-beige);border:1px solid #EDE6D6">
+      <div style="font-weight:800;font-size:11pt">Il conto vero</div>
+      <div style="margin-top:2mm;font-size:10pt;line-height:1.45">
+        Qui non stai comprando “marketing”. Stai comprando un sistema commerciale che smette di disperdere preventivi, tempo e budget.
+        Il ROI nasce da due cose misurabili: <b>più conversione</b> sui preventivi che già fai e <b>meno dispersione</b> nel follow-up.
+      </div>
+      <div class="muted" style="margin-top:2mm;font-style:italic;font-size:9pt">
+        I valori sotto sono stime prudenziali basate sui dati che ci hai dato e sul peso dei moduli scelti.
+      </div>
+    </div>
+
+    <div class="no-break box box-black" style="margin-top:6mm">
+      <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">NUMERI (PRIMO ANNO)</div>
+      <div style="margin-top:4mm;display:grid;grid-template-columns:1fr 1fr;gap:8mm">
+        <div>
+          <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.7)">Investimento primo anno</div>
+          <div class="display" style="font-style:italic;font-size:24pt;color:var(--mc-orange);margin-top:1mm">
+            ${escapeHtml(formatEuro(Math.round(investimento ?? 0)))}
+          </div>
+          <div class="muted" style="font-style:italic;font-size:9pt;margin-top:1mm;color:rgba(250,248,244,0.6)">
+            Setup + canoni (12 mesi) del primo anno
+          </div>
+        </div>
+        <div>
+          <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.7)">ROI stimato</div>
+          <div class="display" style="font-style:italic;font-size:24pt;color:var(--mc-green);margin-top:1mm">
+            ${roi == null ? "—" : escapeHtml(roi.toFixed(2))} ×
+          </div>
+          <div class="muted" style="font-style:italic;font-size:9pt;margin-top:1mm;color:rgba(250,248,244,0.6)">
+            Rapporto tra Δ margine stimato e investimento
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:5mm;border-top:1px solid rgba(250,248,244,0.18);padding-top:4mm">
+        <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.7)">Δ margine stimato (primo anno)</div>
+        <div style="margin-top:1mm;font-weight:800;font-size:14pt;color:var(--mc-green)">
+          + ${escapeHtml(formatEuro(Math.max(0, Math.round(delta ?? 0))))}
+        </div>
+      </div>
+    </div>
+
+    <div class="no-break box box-green" style="margin-top:8mm;padding:5mm 6mm">
+      <div class="caps" style="font-size:9.5pt;font-weight:800;color:#2D7A3E;letter-spacing:0.04em">
+        LEVA DI ACCELERAZIONE: CREDITO MC
+      </div>
+      <div style="margin-top:2mm;font-size:10pt;line-height:1.45;color:var(--mc-black)">
+        Oltre all’investimento, hai anche un <b>credito riutilizzabile</b> entro 12 mesi su qualunque voce del listino.
+        L’importo esatto lo trovi nel riepilogo economico: qui ti basta sapere che è una leva pronta per potenziare il sistema quando i numeri lo giustificano.
+      </div>
+      <div class="muted" style="margin-top:2mm;font-style:italic;font-size:9pt">
+        Credito indicativo (già calcolato nel riepilogo): ${escapeHtml(formatEuro(setupTotals.creditoMetodoCantiere))}
+      </div>
+    </div>
+  </section>
+  `;
+}
+
+function renderPage9Payments(quote: QuoteWithRelations) {
+  const setupTotals = computeSetupTotals(quote);
+  const primoAnnoCompleto =
+    typeof quote.totalAnnual === "number" && quote.totalAnnual > 0
+      ? quote.totalAnnual
+      : quote.totalSetup + quote.totalMonthly * 12;
+  const stripeSetupSconto = Math.round(setupTotals.totalSetup * 0.97);
+  const anticipatoSconto = Math.round(primoAnnoCompleto * 0.95);
+
+  return `
+  <section class="pdf-page">
+    ${pageHeader("09")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">09 Modalità di pagamento</div>
+    <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:6mm">
+      Scegli la modalità più comoda. I canoni mensili ricorrenti restano separati quando indicato.
+    </div>
+
+    <div class="no-break">
+      <div class="caps orange" style="font-size:8pt;margin-bottom:3mm">Modalità di pagamento e sconti</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="background:var(--mc-beige);color:var(--mc-muted)">STANDARD</th>
+            <th style="background:var(--mc-green);color:#fff">STRIPE SETUP · -3%</th>
+            <th style="background:var(--mc-orange);color:#fff">ANTICIPATO 12 MESI · -5%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Bonifico standard alla firma per il setup. I canoni mensili ricorrenti (es. Direzione, CRM / AI Vocale / WhatsApp se non anticipati) addebitati mese per mese.</td>
+            <td style="background:var(--mc-green-bg)"><b>Setup ${escapeHtml(formatEuro(stripeSetupSconto))}</b> via Stripe. Canoni mensili a parte.</td>
+            <td style="background:var(--mc-orange-light)"><b>${escapeHtml(formatEuro(anticipatoSconto))}</b> (primo anno: setup, eventuali canoni anticipati e 12 mesi di canoni ricorrenti) in anticipo alla firma.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="no-break box" style="margin-top:6mm;background:var(--mc-beige);border:1px solid #EDE6D6">
+      <div class="caps muted" style="font-size:8pt">IN ALTERNATIVA: RATEIZZAZIONE SU CARTA DI CREDITO</div>
+      <div style="margin-top:2mm;font-size:10pt">
+        Per Setup superiori a 5.000 € puoi rateizzare con la tua carta di credito aziendale tramite Stripe: 30% all'accettazione del piano,
+        il restante 70% in 3 o 6 rate mensili automatiche sulla stessa carta. Le rate non sono cumulabili con gli sconti del 3% o 5%.
+      </div>
+    </div>
+  </section>
+  `;
+}
+
 function renderPage7(quote: QuoteWithRelations) {
   const { primary } = getClientDisplayName(quote);
   return `
   <section class="pdf-page">
-    ${pageHeader("08")}
-    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">08 Per partire davvero</div>
+    ${pageHeader("10")}
+    <div class="display" style="font-style:italic;font-size:28pt;margin-bottom:2mm">10 Per partire davvero</div>
     <div class="muted" style="font-style:italic;font-size:10pt;margin-bottom:6mm">
       Cosa serve da parte tua, e cosa succede dalla firma in poi
     </div>
@@ -984,6 +1146,8 @@ export function generateTemplate(quote: QuoteWithRelations): string {
     ${renderPage3(quote)}
     ${renderCosaSuccedeOgniMese()}
     ${renderPage6(quote)}
+    ${renderPage8Roi(quote)}
+    ${renderPage9Payments(quote)}
     ${renderPage7(quote)}
   </body>
 </html>

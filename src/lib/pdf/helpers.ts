@@ -62,9 +62,8 @@ export function getDiscountLabel(quote: {
 
   switch (quote.discountType) {
     case "volume_5":
-      return "Sconto volume 5% (3+ moduli)";
     case "volume_10":
-      return "Sconto volume 10% (5+ moduli)";
+      return null;
     case "manual":
       if (quote.discountCode) {
         if ((quote.discountPercent ?? 0) > 0) {

@@ -13,9 +13,8 @@ import {
 import { CrmCustomerSearch, type CrmCustomer } from "@/components/CrmCustomerSearch";
 import {
   applicaCodiceManuale,
-  calcolaScontoVolume,
   canonePrepayFromMonthly,
-  type SelectedItem,
+  computeCreditoMetodoCantiere,
 } from "@/lib/discounts";
 
 type Product = {
@@ -181,7 +180,8 @@ export function QuoteEditor({ initial }: Props) {
     if (initial?.items?.length) {
       for (const it of initial.items) {
         if (!it?.productCode) continue;
-        map.set(it.productCode, Math.max(1, Number(it.quantity || 1)));
+        // In questo preventivatore le voci sono solo selezionabili (quantità sempre 1).
+        map.set(it.productCode, 1);
       }
     }
     return map;
@@ -388,23 +388,6 @@ export function QuoteEditor({ initial }: Props) {
   const totals = useMemo(() => {
     const setupAfterVoucher = baseTotals.setup;
 
-    const selectedDiscountItems: SelectedItem[] = Array.from(selected.entries())
-      .map(([code, qty]) => {
-        const p = products.find((x) => x.code === code);
-        if (!p) return null;
-        if (code === DIAGNOSI_CODE || code === AUDIT_LAMPO_CODE) return null;
-        return {
-          code: p.code,
-          qty,
-          price: p.price,
-          isMonthly: p.isMonthly,
-          block: p.block,
-        };
-      })
-      .filter(Boolean) as SelectedItem[];
-
-    const volume = calcolaScontoVolume(selectedDiscountItems);
-
     const manualRes = manualDiscount
       ? applicaCodiceManuale(
           setupAfterVoucher,
@@ -422,26 +405,39 @@ export function QuoteEditor({ initial }: Props) {
           discountAmount: manualRes.amount,
           discountLabel: manualRes.label,
         }
-      : volume.type !== "none"
-        ? {
-            discountType: volume.type,
-            discountCode: null as string | null,
-            discountPercent: volume.percent,
-            discountAmount: volume.amount,
-            discountLabel: volume.label,
-          }
-        : {
-            discountType: null as string | null,
-            discountCode: null as string | null,
-            discountPercent: 0,
-            discountAmount: 0,
-            discountLabel: "" as string,
-          };
+      : {
+          discountType: null as string | null,
+          discountCode: null as string | null,
+          discountPercent: 0,
+          discountAmount: 0,
+          discountLabel: "" as string,
+        };
 
-    const isVolume = chosen.discountType === "volume_5" || chosen.discountType === "volume_10";
-    const setupNet = Math.max(0, setupAfterVoucher - (isVolume ? 0 : chosen.discountAmount));
+    const setupNet = Math.max(0, setupAfterVoucher - chosen.discountAmount);
     const oneTimeTotal = setupNet + baseTotals.prepaidCrm + baseTotals.prepaidAi + baseTotals.prepaidWa;
     const annualTotal = oneTimeTotal + baseTotals.monthlyAfterPrepay * 12;
+
+    const discountTypeForCredito = manualDiscount
+      ? chosen.discountType
+      : chosen.discountType ??
+        (initial?.discountType === "volume_5" || initial?.discountType === "volume_10"
+          ? initial.discountType
+          : null);
+    const discountAmountForCredito = manualDiscount
+      ? chosen.discountAmount
+      : chosen.discountAmount || Number(initial?.discountAmount || 0);
+    const discountPercentForCredito = manualDiscount
+      ? chosen.discountPercent
+      : chosen.discountPercent || Number(initial?.discountPercent || 0);
+
+    const creditoMetodoCantiere = computeCreditoMetodoCantiere({
+      setupBeforeDiscount: baseTotals.setupGross,
+      diagnosiGiaPagata,
+      voucherAuditApplied,
+      discountType: discountTypeForCredito,
+      discountAmount: discountAmountForCredito,
+      discountPercent: discountPercentForCredito,
+    });
 
     return {
       ...baseTotals,
@@ -454,9 +450,17 @@ export function QuoteEditor({ initial }: Props) {
       discountPercent: chosen.discountPercent,
       discountAmount: chosen.discountAmount,
       discountLabel: chosen.discountLabel,
-      volumeDiscount: volume,
+      creditoMetodoCantiere,
     };
-  }, [baseTotals, products, selected, manualDiscount]);
+  }, [
+    baseTotals,
+    manualDiscount,
+    diagnosiGiaPagata,
+    voucherAuditApplied,
+    initial?.discountType,
+    initial?.discountAmount,
+    initial?.discountPercent,
+  ]);
 
   const roiLive = useMemo(() => {
     const selectedForRoi = Array.from(selected.entries())
@@ -557,7 +561,7 @@ export function QuoteEditor({ initial }: Props) {
       discountAmount: amt > 0 ? amt : 0,
     });
     setDiscountCodeInput(String(data.code || raw).toUpperCase());
-    setDiscountCodeMessage("Codice applicato: sostituisce lo sconto volume automatico.");
+    setDiscountCodeMessage("Codice applicato sul setup.");
   }
 
   function clearDiscountCode() {
@@ -585,32 +589,6 @@ export function QuoteEditor({ initial }: Props) {
       }
       clearPeerCanoneSelections(next, code);
       next.set(code, 1);
-      return next;
-    });
-  }
-
-  function updateQuantity(code: string, qty: number) {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (qty <= 0) next.delete(code);
-      else if (code === DIAGNOSI_CODE || code === AUDIT_LAMPO_CODE) next.set(code, 1);
-      else if (DCE_ALLOWED_CODES.includes(code as (typeof DCE_ALLOWED_CODES)[number]) && qty > 0) {
-        for (const c of DCE_ALLOWED_CODES) {
-          if (c !== code) next.delete(c);
-        }
-        next.set(code, 1);
-      } else if (qty > 0) {
-        for (const s of exclusiveCanoneCodeSets) {
-          if (s.has(code)) {
-            for (const c of s) {
-              if (c !== code) next.delete(c);
-            }
-            next.set(code, qty);
-            return next;
-          }
-        }
-        next.set(code, qty);
-      } else next.set(code, qty);
       return next;
     });
   }
@@ -1143,7 +1121,6 @@ export function QuoteEditor({ initial }: Props) {
                       <div className="divide-mc">
                         {list.map((p) => {
                           const isSelected = selected.has(p.code);
-                          const qty = selected.get(p.code) || 1;
                           const showDetails = expandedDetails.has(p.code);
                           const includesArr = safeParseIncludes(p.includes);
 
@@ -1188,27 +1165,6 @@ export function QuoteEditor({ initial }: Props) {
                                     >
                                       {showDetails ? "Nascondi dettagli" : "Mostra dettagli"}
                                     </button>
-
-                                    {isSelected &&
-                                      (p.code === DIAGNOSI_CODE ||
-                                      p.code === AUDIT_LAMPO_CODE ||
-                                      DCE_ALLOWED_CODES.includes(p.code as (typeof DCE_ALLOWED_CODES)[number]) ? (
-                                        <div className="ml-auto text-xs" style={{ color: "var(--mc-text-muted)" }}>
-                                          Qtà 1
-                                        </div>
-                                      ) : (
-                                        <div className="ml-auto flex items-center gap-2 text-xs">
-                                          <span style={{ color: "var(--mc-text-muted)" }}>{p.isMonthly ? "Mesi" : "Qtà"}</span>
-                                          <input
-                                            type="number"
-                                            min={1}
-                                            className="input"
-                                            style={{ width: 88, padding: "6px 10px" }}
-                                            value={qty}
-                                            onChange={(e) => updateQuantity(p.code, Number(e.target.value) || 1)}
-                                          />
-                                        </div>
-                                      ))}
                                   </div>
 
                                   {showDetails && (
@@ -1453,6 +1409,34 @@ export function QuoteEditor({ initial }: Props) {
                 <span className="font-semibold text-xs tabular-nums">−{formatEuro(AUDIT_VOUCHER_AMOUNT)}</span>
               </div>
             )}
+
+            {totals.discountAmount > 0 && (
+              <div className="flex justify-between gap-2 pt-1" style={{ color: "var(--mc-success)" }}>
+                <span className="text-xs min-w-0">{totals.discountLabel}</span>
+                <span className="font-semibold text-xs tabular-nums shrink-0">−{formatEuro(totals.discountAmount)}</span>
+              </div>
+            )}
+
+            {totals.creditoMetodoCantiere > 0 && (
+              <div
+                className="mt-3 rounded-lg p-4"
+                style={{
+                  background: "linear-gradient(135deg, rgba(45, 122, 62, 0.14), rgba(45, 122, 62, 0.05))",
+                  border: "1px solid rgba(45, 122, 62, 0.4)",
+                }}
+              >
+                <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "#2D7A3E" }}>
+                  Credito Metodo Cantiere
+                </div>
+                <div className="text-2xl font-bold tabular-nums mt-1" style={{ color: "#2D7A3E" }}>
+                  {formatEuro(totals.creditoMetodoCantiere)}
+                </div>
+                <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--mc-text-secondary)" }}>
+                  10% sul netto setup modulo listino (dopo voucher Diagnosi/Audit e sconto codice sul setup). I canoni in
+                  anticipo annuo non entrano in questa base. Spendibile entro 12 mesi su qualunque voce del listino.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="pt-4" style={{ borderTop: "2px solid var(--mc-text)" }}>
@@ -1494,7 +1478,7 @@ export function QuoteEditor({ initial }: Props) {
                 {discountCodeMessage}
               </p>
             )}
-            <p className="helper-text">Si applica al setup; sostituisce lo sconto volume automatico.</p>
+            <p className="helper-text">Si applica al netto setup (dopo voucher Diagnosi/Audit).</p>
           </div>
 
           <div className="card-muted p-4">

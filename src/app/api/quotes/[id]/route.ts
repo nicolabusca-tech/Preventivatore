@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 
@@ -9,15 +10,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
-  // Aggiornamento automatico stato "scaduto" per il singolo preventivo
-  await prisma.quote.updateMany({
-    where: {
-      id: params.id,
-      expiresAt: { lt: new Date() },
-      status: { in: ["sent"] },
-    },
-    data: { status: "sent" },
-  });
+  await ensureQuoteSchema();
 
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
@@ -40,6 +33,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+
+  await ensureQuoteSchema();
 
   const data = await req.json();
 

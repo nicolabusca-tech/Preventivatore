@@ -2,14 +2,24 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 const AUDIT_LAMPO_CODE = "AUDIT_LAMPO";
 
+function buildNextQuoteNumber(prev: string | null, year: number) {
+  const prefix = `Q${year}-`;
+  const prevNum = prev && prev.startsWith(prefix) ? Number(prev.slice(prefix.length)) : 0;
+  const nextNum = Number.isFinite(prevNum) ? prevNum + 1 : 1;
+  return `${prefix}${String(nextNum).padStart(4, "0")}`;
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+
+  await ensureQuoteSchema();
 
   const data = await req.json();
   const {
@@ -73,9 +83,8 @@ export async function POST(req: Request) {
     dceProduct = p;
   }
 
-  const count = await prisma.quote.count();
   const year = new Date().getFullYear();
-  const quoteNumber = `Q${year}-${String(count + 1).padStart(4, "0")}`;
+  const prefix = `Q${year}-`;
 
   const defaultExpiry = new Date();
   defaultExpiry.setDate(defaultExpiry.getDate() + 30);
@@ -117,58 +126,80 @@ export async function POST(req: Request) {
       : []),
   ];
 
-  const quote = await prisma.quote.create({
-    data: {
-      quoteNumber,
-      userId: session.user.id,
-      dceProductId: dceProduct ? dceProduct.id : null,
-      clientName,
-      clientCompany,
-      clientEmail,
-      clientPhone,
-      clientNotes,
-      clientVat: clientVat || null,
-      clientSdi: clientSdi || null,
-      clientAddress: clientAddress ?? null,
-      clientPostalCode: clientPostalCode ?? null,
-      clientCity: clientCity ?? null,
-      clientProvince: clientProvince ?? null,
-      originCliente: originCliente ?? null,
-      estrattoDiagnosi: estrattoDiagnosi ?? null,
-      diagnosiGiaPagata: diagnosiPaid,
-      roiPreventiviMese: roiPreventiviMese ?? null,
-      roiImportoMedio: roiImportoMedio ?? null,
-      roiConversioneAttuale: roiConversioneAttuale ?? null,
-      roiMargineCommessa: roiMargineCommessa ?? null,
-      roiSnapshot: roiSnapshot ?? null,
-      crmCustomerId: crmCustomerId ?? null,
-      scontoAiVocaleAnnuale: scontoAiVocaleAnnuale ?? false,
-      scontoWaAnnuale: scontoWaAnnuale ?? false,
-      notes,
-      expiresAt: expiresAt ? new Date(expiresAt) : defaultExpiry,
-      totalSetup: totalSetup || 0,
-      totalMonthly: totalMonthly || 0,
-      totalAnnual: totalAnnual || 0,
-      setupBeforeDiscount: setupBeforeDiscount || totalSetup || 0,
-      discountType: discountType || null,
-      discountAmount: discountAmount || 0,
-      discountCode: discountCode || null,
-      discountPercent: discountPercent || 0,
-      scontoCrmAnnuale: scontoCrmAnnuale ?? false,
-      voucherAuditApplied: voucherAuditApplied || false,
-      items: {
-        create: finalItems.map((item: any) => ({
-          productCode: item.productCode,
-          productName: item.productName,
-          price: item.price,
-          quantity: item.quantity || 1,
-          isMonthly: item.isMonthly || false,
-          notes: item.notes,
-        })),
-      },
-    },
-    include: { items: true },
-  });
+  // Create with retry to avoid duplicate quoteNumber in concurrent requests.
+  let quote: any = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const last = await prisma.quote.findFirst({
+        where: { quoteNumber: { startsWith: prefix } },
+        orderBy: { quoteNumber: "desc" },
+        select: { quoteNumber: true },
+      });
+      const quoteNumber = buildNextQuoteNumber(last?.quoteNumber ?? null, year);
+
+      quote = await prisma.quote.create({
+        data: {
+          quoteNumber,
+          userId: session.user.id,
+          dceProductId: dceProduct ? dceProduct.id : null,
+          clientName,
+          clientCompany,
+          clientEmail,
+          clientPhone,
+          clientNotes,
+          clientVat: clientVat || null,
+          clientSdi: clientSdi || null,
+          clientAddress: clientAddress ?? null,
+          clientPostalCode: clientPostalCode ?? null,
+          clientCity: clientCity ?? null,
+          clientProvince: clientProvince ?? null,
+          originCliente: originCliente ?? null,
+          estrattoDiagnosi: estrattoDiagnosi ?? null,
+          diagnosiGiaPagata: diagnosiPaid,
+          roiPreventiviMese: roiPreventiviMese ?? null,
+          roiImportoMedio: roiImportoMedio ?? null,
+          roiConversioneAttuale: roiConversioneAttuale ?? null,
+          roiMargineCommessa: roiMargineCommessa ?? null,
+          roiSnapshot: roiSnapshot ?? null,
+          crmCustomerId: crmCustomerId ?? null,
+          scontoAiVocaleAnnuale: scontoAiVocaleAnnuale ?? false,
+          scontoWaAnnuale: scontoWaAnnuale ?? false,
+          notes,
+          expiresAt: expiresAt ? new Date(expiresAt) : defaultExpiry,
+          totalSetup: totalSetup || 0,
+          totalMonthly: totalMonthly || 0,
+          totalAnnual: totalAnnual || 0,
+          setupBeforeDiscount: setupBeforeDiscount || totalSetup || 0,
+          discountType: discountType || null,
+          discountAmount: discountAmount || 0,
+          discountCode: discountCode || null,
+          discountPercent: discountPercent || 0,
+          scontoCrmAnnuale: scontoCrmAnnuale ?? false,
+          voucherAuditApplied: voucherAuditApplied || false,
+          items: {
+            create: finalItems.map((item: any) => ({
+              productCode: item.productCode,
+              productName: item.productName,
+              price: item.price,
+              quantity: item.quantity || 1,
+              isMonthly: item.isMonthly || false,
+              notes: item.notes,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+
+      break;
+    } catch (e: any) {
+      // Prisma unique constraint violation on quoteNumber
+      if (e?.code === "P2002") continue;
+      throw e;
+    }
+  }
+  if (!quote) {
+    return NextResponse.json({ error: "Impossibile generare quoteNumber" }, { status: 500 });
+  }
 
   // Se usato un codice manuale, incrementa contatore utilizzi
   if (discountType === "manual" && discountCode) {

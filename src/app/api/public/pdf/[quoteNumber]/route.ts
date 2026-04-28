@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generatePdf } from "@/lib/pdf/generate-pdf";
+import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 
 export async function GET(
   req: Request,
@@ -10,6 +11,8 @@ export async function GET(
   if (!quoteNumber) {
     return NextResponse.json({ error: "Preventivo non trovato" }, { status: 404 });
   }
+
+  await ensureQuoteSchema();
 
   const quote = await prisma.quote.findUnique({
     where: { quoteNumber },

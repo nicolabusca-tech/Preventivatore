@@ -10,14 +10,18 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "setup": "npm install && prisma db push && npm run db:seed"
+    "setup": "npm install && prisma db push && npm run db:seed",
+    "test:credito": "tsx scripts/test-credito-mc.ts",
+    "test:pdf-layout": "tsx scripts/test-pdf-layout.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.19.0",
+    "@sparticuz/chromium": "^147.0.2",
     "bcryptjs": "^2.4.3",
     "next": "^14.2.0",
     "next-auth": "^4.24.7",
     "puppeteer": "^24.42.0",
+    "puppeteer-core": "^24.42.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "zod": "^3.23.0"

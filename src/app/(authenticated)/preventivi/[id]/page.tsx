@@ -5,75 +5,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { computeCredito } from "@/lib/pricing/engine";
 import { parseRoiSnapshot } from "@/lib/roi";
-import { QuoteEditor, type QuoteEditorInitialData } from "@/components/QuoteEditor";
+import { QuoteEditor } from "@/components/QuoteEditor";
 import { deriveFase, getFaseOption, faseToneStyle } from "@/lib/fase";
+import type { QuoteDetail, QuoteEditorInitialData } from "@/lib/types/quote";
 
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 const DIAGNOSI_VOUCHER_AMOUNT = 497;
 const AUDIT_VOUCHER_AMOUNT = 147;
-
-type QuoteDetail = {
-  id: string;
-  quoteNumber: string;
-  clientName: string;
-  clientCompany: string | null;
-  clientEmail: string | null;
-  clientPhone: string | null;
-  clientNotes: string | null;
-  clientAddress: string | null;
-  clientPostalCode: string | null;
-  clientCity: string | null;
-  clientProvince: string | null;
-  clientVat: string | null;
-  clientSdi: string | null;
-  crmCustomerId: string | null;
-  originCliente: string | null;
-  estrattoDiagnosi: string | null;
-  diagnosiGiaPagata: boolean;
-  roiPreventiviMese: number | null;
-  roiImportoMedio: number | null;
-  roiConversioneAttuale: number | null;
-  roiMargineCommessa: number | null;
-  roiSnapshot: string | null;
-  notes: string | null;
-  totalSetup: number;
-  totalMonthly: number;
-  totalAnnual: number;
-  costSetup: number;
-  costMonthly: number;
-  costAnnual: number;
-  marginAnnual: number;
-  marginPercentAnnual: number;
-  kind: string;
-  salesStage: string;
-  deliveryStage: string;
-  wonAt: string | null;
-  kickoffAt: string | null;
-  closedAt: string | null;
-  setupBeforeDiscount: number;
-  discountType: string | null;
-  discountAmount: number;
-  discountCode: string | null;
-  discountPercent: number;
-  scontoCrmAnnuale: boolean;
-  scontoAiVocaleAnnuale: boolean;
-  scontoWaAnnuale: boolean;
-  voucherAuditApplied: boolean;
-  status: string;
-  sentAt: string | null;
-  viewedAt: string | null;
-  expiresAt: string | null;
-  createdAt: string;
-  user: { name: string; email: string };
-  items: {
-    id: string;
-    productCode: string;
-    productName: string;
-    price: number;
-    quantity: number;
-    isMonthly: boolean;
-  }[];
-};
 
 const discountTypeLabels: Record<string, string> = {
   manual: "Codice sconto manuale",

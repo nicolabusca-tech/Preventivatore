@@ -12,27 +12,7 @@ import {
   faseToneStyle,
   getFaseOption,
 } from "@/lib/fase";
-
-type Quote = {
-  id: string;
-  quoteNumber: string;
-  clientName: string;
-  clientCompany: string | null;
-  totalSetup: number;
-  totalMonthly: number;
-  totalAnnual: number;
-  costAnnual: number;
-  marginAnnual: number;
-  marginPercentAnnual: number;
-  status: string;
-  salesStage: string;
-  deliveryStage: string;
-  wonAt: string | null;
-  expiresAt: string | null;
-  createdAt: string;
-  user: { name: string };
-  items: { id: string }[];
-};
+import type { QuoteListItem } from "@/lib/types/quote";
 
 type FaseFilterValue = FaseValue | "all";
 
@@ -75,7 +55,7 @@ function formatPct(value: number) {
 export default function PreventiviPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [quotes, setQuotes] = useState<QuoteListItem[]>([]);
   const [filter, setFilter] = useState<FaseFilterValue>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -150,7 +130,7 @@ export default function PreventiviPage() {
     }
   }
 
-  function matchesFilter(quote: Quote) {
+  function matchesFilter(quote: QuoteListItem) {
     if (filter === "all") return true;
     return deriveFase(quote) === filter;
   }

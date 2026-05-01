@@ -12,6 +12,9 @@ import {
 } from "@/lib/roi";
 import { CrmCustomerSearch, type CrmCustomer } from "@/components/CrmCustomerSearch";
 import { computePricing, type PricingInput } from "@/lib/pricing/engine";
+import type { QuoteEditorInitialData } from "@/lib/types/quote";
+
+export type { QuoteEditorInitialData } from "@/lib/types/quote";
 
 type Product = {
   id: string;
@@ -26,48 +29,6 @@ type Product = {
   priceLabel: string | null;
   isMonthly: boolean;
   diagnosiPeso: number;
-};
-
-export type QuoteEditorInitialData = {
-  id: string;
-  status: string;
-  clientName: string;
-  clientCompany: string | null;
-  clientEmail: string | null;
-  clientPhone: string | null;
-  clientNotes: string | null;
-  crmCustomerId: string | null;
-  clientAddress: string | null;
-  clientPostalCode: string | null;
-  clientCity: string | null;
-  clientProvince: string | null;
-  clientVat: string | null;
-  clientSdi: string | null;
-  originCliente: string | null;
-  estrattoDiagnosi: string | null;
-  diagnosiGiaPagata: boolean;
-  roiPreventiviMese: number | null;
-  roiImportoMedio: number | null;
-  roiConversioneAttuale: number | null;
-  roiMargineCommessa: number | null;
-  roiSnapshot: string | null;
-  notes: string | null;
-  expiresAt: string | null;
-  voucherAuditApplied: boolean;
-  scontoCrmAnnuale: boolean;
-  scontoAiVocaleAnnuale: boolean;
-  scontoWaAnnuale: boolean;
-  discountType: string | null;
-  discountAmount: number;
-  discountCode: string | null;
-  discountPercent: number;
-  items: {
-    productCode: string;
-    quantity: number;
-    price: number;
-    isMonthly: boolean;
-    productName: string;
-  }[];
 };
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;

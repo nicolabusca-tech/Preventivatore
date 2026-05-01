@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
+import { computeQuoteCosts } from "@/lib/costs";
 
 function buildNextQuoteNumber(prev: string | null, year: number) {
   const prefix = `Q${year}-`;
@@ -54,8 +55,9 @@ export async function POST(req: Request) {
       });
       const quoteNumber = buildNextQuoteNumber(last?.quoteNumber ?? null, year);
 
-      created = await prisma.quote.create({
-        data: {
+      created = await prisma.$transaction(async (tx) => {
+        const createdQuote = await tx.quote.create({
+          data: {
           quoteNumber,
           userId: session.user.id,
           dceProductId: source.dceProductId,
@@ -106,8 +108,75 @@ export async function POST(req: Request) {
               notes: it.notes,
             })),
           },
-        },
-        select: { id: true, quoteNumber: true },
+          },
+          include: { items: true },
+        });
+
+        const productCodes = createdQuote.items.map((it) => it.productCode);
+        const products = await tx.product.findMany({
+          where: { code: { in: productCodes } },
+          select: {
+            code: true,
+            costs: {
+              where: { active: true },
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                name: true,
+                unitCostCents: true,
+                unit: true,
+                multiplierKind: true,
+                multiplierValue: true,
+                conditionsJson: true,
+                active: true,
+              },
+            },
+          },
+        });
+        const costsByCode = new Map(products.map((p) => [p.code, p.costs]));
+        const computed = computeQuoteCosts({
+          ctx: {
+            scontoCrmAnnuale: createdQuote.scontoCrmAnnuale,
+            scontoAiVocaleAnnuale: createdQuote.scontoAiVocaleAnnuale,
+            scontoWaAnnuale: createdQuote.scontoWaAnnuale,
+          },
+          revenueAnnual: createdQuote.totalAnnual,
+          items: createdQuote.items.map((it) => ({
+            id: it.id,
+            productCode: it.productCode,
+            quantity: it.quantity,
+            isMonthly: it.isMonthly,
+          })),
+          costsByProductCode: costsByCode,
+        });
+
+        if (computed.itemCosts.length > 0) {
+          await tx.quoteItemCost.createMany({
+            data: computed.itemCosts.map((c) => ({
+              quoteItemId: c.quoteItemId,
+              productCostId: c.productCostId,
+              name: c.name,
+              unitCostCents: c.unitCostCents,
+              unit: c.unit,
+              multiplier: c.multiplier,
+              lineCostCents: c.lineCostCents,
+            })),
+          });
+        }
+
+        const finalQuote = await tx.quote.update({
+          where: { id: createdQuote.id },
+          data: {
+            costSetup: computed.costSetup,
+            costMonthly: computed.costMonthly,
+            costAnnual: computed.costAnnual,
+            marginAnnual: computed.marginAnnual,
+            marginPercentAnnual: computed.marginPercentAnnual,
+          },
+          select: { id: true, quoteNumber: true },
+        });
+
+        return finalQuote;
       });
 
       break;

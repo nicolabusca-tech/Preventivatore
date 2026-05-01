@@ -221,6 +221,82 @@ export function QuoteEditor({ initial }: Props) {
     return initial ? "INITIAL" : "";
   });
 
+  // In alcune navigazioni Next può riusare l'istanza del componente (cache/back/soft nav).
+  // In quel caso, se passi da "bozza" a "nuovo", dobbiamo resettare lo stato locale.
+  const initialId = initial?.id ?? null;
+  useEffect(() => {
+    setError("");
+    setSavingDraft(false);
+    setSending(false);
+    setQuoteId(initial?.id ?? null);
+
+    setClientName(initial?.clientName ?? "");
+    setClientCompany(initial?.clientCompany ?? "");
+    setClientEmail(initial?.clientEmail ?? "");
+    setClientPhone(initial?.clientPhone ?? "");
+    setClientNotes(initial?.clientNotes ?? "");
+    setCrmCustomerId(initial?.crmCustomerId ?? null);
+
+    setClientAddress(initial?.clientAddress ?? "");
+    setClientPostalCode(initial?.clientPostalCode ?? "");
+    setClientCity(initial?.clientCity ?? "");
+    setClientProvince(initial?.clientProvince ?? "");
+    setClientVat(initial?.clientVat ?? "");
+    setClientSdi(initial?.clientSdi ?? "");
+
+    setOriginCliente(initial?.originCliente ?? "");
+    setEstrattoDiagnosi(initial?.estrattoDiagnosi ?? "");
+
+    setRoiInputs(
+      mergeRoiDefaults(
+        initial
+          ? {
+              preventiviMese: initial.roiPreventiviMese ?? undefined,
+              importoMedio: initial.roiImportoMedio ?? undefined,
+              conversioneAttuale: initial.roiConversioneAttuale ?? undefined,
+              margineCommessa: initial.roiMargineCommessa ?? undefined,
+            }
+          : null
+      )
+    );
+
+    setSelected(() => {
+      const map = new Map<string, number>();
+      if (initial?.items?.length) {
+        for (const it of initial.items) {
+          if (!it?.productCode) continue;
+          map.set(it.productCode, 1);
+        }
+      }
+      return map;
+    });
+
+    setScontoCrmAnnuale(initial?.scontoCrmAnnuale ?? true);
+    setScontoAiVocaleAnnuale(initial?.scontoAiVocaleAnnuale ?? false);
+    setScontoWaAnnuale(initial?.scontoWaAnnuale ?? false);
+
+    setNotes(initial?.notes ?? "");
+
+    // Reset codice sconto: sul "nuovo" deve essere vuoto; sulla bozza ripristiniamo il valore.
+    setDiscountCodeInput(initial?.discountCode ?? "");
+    setDiscountCodeMessage(null);
+    setDiscountValidating(false);
+    setManualDiscount(
+      initial?.discountType === "manual" && initial.discountCode
+        ? {
+            code: initial.discountCode,
+            discountPercent: Number(initial.discountPercent || 0),
+            discountAmount: Number(initial.discountAmount || 0),
+          }
+        : null
+    );
+
+    setExpandedBlocks(new Set(["FRONTEND", "01"]));
+    setExpandedDetails(new Set());
+
+    setLastSavedFingerprint(initial ? "INITIAL" : "");
+  }, [initialId]);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -463,6 +539,9 @@ export function QuoteEditor({ initial }: Props) {
   ]);
 
   const roiLive = useMemo(() => {
+    const hasDce = DCE_ALLOWED_CODES.some((c) => selected.has(c));
+    const investimentoOrizzonteMesi = hasDce ? 6 : 12;
+
     const selectedForRoi = Array.from(selected.entries())
       .map(([code, quantity]) => {
         const p = products.find((x) => x.code === code);
@@ -483,7 +562,8 @@ export function QuoteEditor({ initial }: Props) {
       totals.oneTimeTotal,
       totals.monthlyAfterPrepay,
       diagnosiShareValue,
-      diagnosiPesoTotale
+      diagnosiPesoTotale,
+      investimentoOrizzonteMesi
     );
   }, [products, roiInputs, selected, totals.monthlyAfterPrepay, totals.oneTimeTotal]);
 
@@ -506,9 +586,13 @@ export function QuoteEditor({ initial }: Props) {
 
   const roiQuick = useMemo(() => {
     const payload = roiLive.payload;
-    const investimento = totals.annualTotal;
+    const investimento = payload.valoreFatturatoProposta;
     const deltaMargine = payload.margineStimatoProposta - payload.margineAnnuoBaseline;
-    const paybackMesi = deltaMargine > 0 ? (investimento / deltaMargine) * 12 : null;
+    // Evita rientri "infinito" quando Δ margine è quasi zero (es. 0.01€/anno).
+    // In quei casi il valore è tecnicamente corretto ma inutilizzabile in UI.
+    const EPS_DELTA_MARGINE = 1; // €/anno
+    const paybackMesi =
+      deltaMargine > EPS_DELTA_MARGINE && investimento > 0 ? (investimento / deltaMargine) * 12 : null;
 
     const preventiviAnnui = (roiInputs.preventiviMese || 0) * 12;
     const contrattiAttuali = preventiviAnnui * ((roiInputs.conversioneAttuale || 0) / 100);
@@ -522,7 +606,19 @@ export function QuoteEditor({ initial }: Props) {
       contrattiAttuali,
       contrattiAttesi,
     };
-  }, [roiExplain.convAttesa, roiInputs.conversioneAttuale, roiInputs.preventiviMese, roiLive.payload, totals.annualTotal]);
+  }, [roiExplain.convAttesa, roiInputs.conversioneAttuale, roiInputs.preventiviMese, roiLive.payload]);
+
+  const paybackLabel = useMemo(() => {
+    const v = roiQuick.paybackMesi;
+    if (v == null || !Number.isFinite(v) || v <= 0) return "—";
+    if (v >= 360) return "oltre 360 mesi";
+    return `${v.toFixed(1)} mesi`;
+  }, [roiQuick.paybackMesi]);
+
+  const investimentoLabel = useMemo(() => {
+    const mesi = roiLive.payload.investimentoOrizzonteMesi ?? 12;
+    return mesi === 6 ? "Investimento (6 mesi)" : "Investimento (1° anno)";
+  }, [roiLive.payload.investimentoOrizzonteMesi]);
 
   async function applyDiscountCode() {
     setDiscountCodeMessage(null);
@@ -1245,8 +1341,9 @@ export function QuoteEditor({ initial }: Props) {
         </div>
       </div>
 
-      <div className="lg:col-span-1">
-        <div className="card p-5 lg:sticky lg:top-4 space-y-4">
+      <div className="lg:col-span-1 lg:self-start">
+        <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-auto lg:overscroll-contain">
+          <div className="card p-5 space-y-4">
           {/* (Sidebar totals e ROI: manteniamo le stesse classi/stili già usate in pagina nuovo) */}
 
           <div className="space-y-2 text-sm">
@@ -1502,7 +1599,7 @@ export function QuoteEditor({ initial }: Props) {
               </div>
               <div className="pt-2 mt-2 space-y-1" style={{ borderTop: "1px solid var(--mc-border)" }}>
                 <div className="flex justify-between gap-2">
-                  <span style={{ color: "var(--mc-text-secondary)" }}>Investimento (1° anno)</span>
+                  <span style={{ color: "var(--mc-text-secondary)" }}>{investimentoLabel}</span>
                   <span className="font-semibold tabular-nums">{formatEuro(roiQuick.investimento)}</span>
                 </div>
                 <div className="flex justify-between gap-2">
@@ -1512,7 +1609,7 @@ export function QuoteEditor({ initial }: Props) {
                 <div className="flex justify-between gap-2">
                   <span style={{ color: "var(--mc-text-secondary)" }}>Rientro stimato</span>
                   <span className="font-semibold tabular-nums">
-                    {roiQuick.paybackMesi == null ? "—" : `${roiQuick.paybackMesi.toFixed(1)} mesi`}
+                    {paybackLabel}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2">
@@ -1556,6 +1653,7 @@ export function QuoteEditor({ initial }: Props) {
           <p className="text-xs text-center" style={{ color: "var(--mc-text-muted)" }}>
             {quoteId ? (hasUnsavedChanges ? "Hai modifiche non salvate." : "Bozza salvata.") : "Salva la bozza per ottenere il PDF e inviare al cliente."}
           </p>
+          </div>
         </div>
       </div>
     </div>

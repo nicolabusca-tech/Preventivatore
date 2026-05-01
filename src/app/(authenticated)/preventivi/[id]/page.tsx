@@ -38,6 +38,16 @@ type QuoteDetail = {
   totalSetup: number;
   totalMonthly: number;
   totalAnnual: number;
+  costSetup: number;
+  costMonthly: number;
+  costAnnual: number;
+  marginAnnual: number;
+  marginPercentAnnual: number;
+  salesStage: string;
+  deliveryStage: string;
+  wonAt: string | null;
+  kickoffAt: string | null;
+  closedAt: string | null;
   setupBeforeDiscount: number;
   discountType: string | null;
   discountAmount: number;
@@ -74,6 +84,11 @@ function formatEuro(value: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function formatPct(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return `${value.toFixed(1)}%`;
 }
 
 function formatDate(dateStr: string) {
@@ -741,6 +756,22 @@ export default function DettaglioPreventivoPage() {
             <div className="text-2xl font-bold tabular-nums mt-0.5">
               {formatEuro(quote.totalSetup)}
             </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+            <div className="card-muted p-3">
+              <div className="label">Costo 1° anno</div>
+              <div className="font-semibold tabular-nums">{quote.costAnnual > 0 ? formatEuro(quote.costAnnual) : "—"}</div>
+            </div>
+            <div className="card-muted p-3">
+              <div className="label">Margine 1° anno</div>
+              <div className="font-semibold tabular-nums">
+                {quote.marginAnnual !== 0 ? formatEuro(quote.marginAnnual) : "—"}{" "}
+                <span style={{ color: "var(--mc-text-secondary)", fontWeight: 600 }}>
+                  ({formatPct(quote.marginPercentAnnual)})
+                </span>
+              </div>
+            </div>
+          </div>
 
             {quote.totalMonthly > 0 && (
               <>

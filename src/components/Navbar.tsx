@@ -35,6 +35,7 @@ export function Navbar() {
   const commercialItems = [
     { href: "/preventivi", label: "I miei preventivi" },
     { href: "/preventivi/nuovo", label: "Nuovo preventivo" },
+    { href: "/analisi", label: "Analisi" },
   ];
 
   const adminItems = isAdmin

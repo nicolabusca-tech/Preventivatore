@@ -18,6 +18,7 @@ export type RoiSnapshotPayload = {
   margineStimatoProposta: number;
   valoreQuotaDiagnosi: number;
   indice: number | null;
+  investimentoOrizzonteMesi?: number;
   // Campi extra (v1.6) — utili per debug/trasparenza UI
   diagnosiPesoTotale?: number;
   conversioneAttesa?: number;
@@ -91,7 +92,8 @@ export function buildRoiSnapshot(
   oneTimeTotal: number,
   monthlyTotal: number,
   diagnosiShareValue: number,
-  diagnosiPesoTotale: number
+  diagnosiPesoTotale: number,
+  investimentoOrizzonteMesi: number = 12
 ): { snapshot: string; payload: RoiSnapshotPayload } {
   const preventiviAnnui = inputs.preventiviMese * 12;
   const conversioneAttuale = inputs.conversioneAttuale / 100;
@@ -104,13 +106,15 @@ export function buildRoiSnapshot(
   const contrattiAttesi = preventiviAnnui * conversioneAttesa;
   const margineStimatoProposta = contrattiAttesi * marginePerContratto;
 
-  // L'investimento del primo anno (setup + canoni annui) serve per l'indice ROI.
-  const investimentoPrimoAnno = Math.max(0, oneTimeTotal + monthlyTotal * 12);
-  const deltaPrimoAnno = margineStimatoProposta - margineAnnuoBaseline;
-  const indice = investimentoPrimoAnno > 0 ? deltaPrimoAnno / investimentoPrimoAnno : null;
+  const mesi = Number.isFinite(investimentoOrizzonteMesi) ? Math.max(1, Math.round(investimentoOrizzonteMesi)) : 12;
 
-  // NB: "valoreFatturatoProposta" è usato nel PDF come "Investimento primo anno".
-  const valoreFatturatoProposta = investimentoPrimoAnno;
+  // L'investimento (setup + canoni per N mesi) serve per l'indice ROI.
+  const investimento = Math.max(0, oneTimeTotal + monthlyTotal * mesi);
+  const deltaPrimoAnno = margineStimatoProposta - margineAnnuoBaseline;
+  const indice = investimento > 0 ? deltaPrimoAnno / investimento : null;
+
+  // NB: "valoreFatturatoProposta" è usato nel PDF come investimento di riferimento.
+  const valoreFatturatoProposta = investimento;
   const payload: RoiSnapshotPayload = {
     inputs: { ...inputs },
     fatturatoAnnuoBaseline,
@@ -119,6 +123,7 @@ export function buildRoiSnapshot(
     margineStimatoProposta,
     valoreQuotaDiagnosi: diagnosiShareValue,
     indice,
+    investimentoOrizzonteMesi: mesi,
     diagnosiPesoTotale,
     conversioneAttesa,
   };

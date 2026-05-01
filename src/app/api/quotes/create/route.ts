@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
+import { computeQuoteCosts } from "@/lib/costs";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
@@ -143,10 +144,13 @@ export async function POST(req: Request) {
       });
       const quoteNumber = buildNextQuoteNumber(last?.quoteNumber ?? null, year);
 
-      quote = await prisma.quote.create({
-        data: {
+      quote = await prisma.$transaction(async (tx) => {
+        const created = await tx.quote.create({
+          data: {
           quoteNumber,
           userId: session.user.id,
+          // Forza lo stato iniziale: alcuni DB legacy avevano default "pending".
+          status: "draft",
           dceProductId: dceProduct ? dceProduct.id : null,
           clientName,
           clientCompany,
@@ -192,8 +196,76 @@ export async function POST(req: Request) {
               notes: item.notes,
             })),
           },
-        },
-        include: { items: true },
+          },
+          include: { items: true },
+        });
+
+        // --- Costi e margini (snapshot) ---
+        const productCodes = created.items.map((it) => it.productCode);
+        const products = await tx.product.findMany({
+          where: { code: { in: productCodes } },
+          select: {
+            code: true,
+            costs: {
+              where: { active: true },
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                name: true,
+                unitCostCents: true,
+                unit: true,
+                multiplierKind: true,
+                multiplierValue: true,
+                conditionsJson: true,
+                active: true,
+              },
+            },
+          },
+        });
+        const costsByCode = new Map(products.map((p) => [p.code, p.costs]));
+        const computed = computeQuoteCosts({
+          ctx: {
+            scontoCrmAnnuale: created.scontoCrmAnnuale,
+            scontoAiVocaleAnnuale: created.scontoAiVocaleAnnuale,
+            scontoWaAnnuale: created.scontoWaAnnuale,
+          },
+          revenueAnnual: created.totalAnnual,
+          items: created.items.map((it) => ({
+            id: it.id,
+            productCode: it.productCode,
+            quantity: it.quantity,
+            isMonthly: it.isMonthly,
+          })),
+          costsByProductCode: costsByCode,
+        });
+
+        if (computed.itemCosts.length > 0) {
+          await tx.quoteItemCost.createMany({
+            data: computed.itemCosts.map((c) => ({
+              quoteItemId: c.quoteItemId,
+              productCostId: c.productCostId,
+              name: c.name,
+              unitCostCents: c.unitCostCents,
+              unit: c.unit,
+              multiplier: c.multiplier,
+              lineCostCents: c.lineCostCents,
+            })),
+          });
+        }
+
+        const updated = await tx.quote.update({
+          where: { id: created.id },
+          data: {
+            costSetup: computed.costSetup,
+            costMonthly: computed.costMonthly,
+            costAnnual: computed.costAnnual,
+            marginAnnual: computed.marginAnnual,
+            marginPercentAnnual: computed.marginPercentAnnual,
+          },
+          include: { items: true },
+        });
+
+        return updated;
       });
 
       break;

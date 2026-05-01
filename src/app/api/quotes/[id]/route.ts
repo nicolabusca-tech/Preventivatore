@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
+import { computeQuoteCosts } from "@/lib/costs";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 
@@ -17,6 +18,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     include: {
       user: { select: { name: true, email: true } },
       items: { orderBy: { createdAt: "asc" } },
+      adjustments: { orderBy: { createdAt: "asc" } },
+      payments: { orderBy: [{ paidAt: "asc" }, { dueDate: "asc" }, { createdAt: "asc" }] },
     },
   });
 
@@ -53,6 +56,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
   }
 
+  if (!wantsFullUpdate && data.salesStage !== undefined) {
+    const allowed = ["open", "won", "lost"];
+    if (typeof data.salesStage !== "string" || !allowed.includes(data.salesStage)) {
+      return NextResponse.json(
+        { error: "salesStage non valido. Valori ammessi: open, won, lost." },
+        { status: 400 }
+      );
+    }
+  }
+
+  if (!wantsFullUpdate && data.deliveryStage !== undefined) {
+    const allowed = ["not_started", "in_progress", "done"];
+    if (typeof data.deliveryStage !== "string" || !allowed.includes(data.deliveryStage)) {
+      return NextResponse.json(
+        { error: "deliveryStage non valido. Valori ammessi: not_started, in_progress, done." },
+        { status: 400 }
+      );
+    }
+  }
+
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
     include: { items: true },
@@ -64,7 +87,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   if (wantsFullUpdate) {
-    if (quote.status !== "draft") {
+    // Compat legacy: alcuni record storici usano "pending" come bozza.
+    if (quote.status !== "draft" && quote.status !== "pending") {
       return NextResponse.json(
         { error: "Preventivo non modificabile: non è più in bozza." },
         { status: 400 }
@@ -92,7 +116,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           })),
         });
 
-        return await tx.quote.update({
+        const updatedQuote = await tx.quote.update({
           where: { id: quote.id },
           data: {
             clientName: data.clientName.trim(),
@@ -137,6 +161,80 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             items: { orderBy: { createdAt: "asc" } },
           },
         });
+
+        // --- Costi e margini (ricalcolo + snapshot) ---
+        const itemsFresh = await tx.quoteItem.findMany({
+          where: { quoteId: updatedQuote.id },
+          select: { id: true, productCode: true, quantity: true, isMonthly: true },
+          orderBy: { createdAt: "asc" },
+        });
+        const productCodes = itemsFresh.map((it) => it.productCode);
+        const products = await tx.product.findMany({
+          where: { code: { in: productCodes } },
+          select: {
+            code: true,
+            costs: {
+              where: { active: true },
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                name: true,
+                unitCostCents: true,
+                unit: true,
+                multiplierKind: true,
+                multiplierValue: true,
+                conditionsJson: true,
+                active: true,
+              },
+            },
+          },
+        });
+        const costsByCode = new Map(products.map((p) => [p.code, p.costs]));
+        const computed = computeQuoteCosts({
+          ctx: {
+            scontoCrmAnnuale: updatedQuote.scontoCrmAnnuale,
+            scontoAiVocaleAnnuale: updatedQuote.scontoAiVocaleAnnuale,
+            scontoWaAnnuale: updatedQuote.scontoWaAnnuale,
+          },
+          revenueAnnual: updatedQuote.totalAnnual,
+          items: itemsFresh,
+          costsByProductCode: costsByCode,
+        });
+
+        // Elimina eventuali snapshot costi precedenti (defensivo)
+        await tx.quoteItemCost.deleteMany({
+          where: { quoteItemId: { in: itemsFresh.map((it) => it.id) } },
+        });
+        if (computed.itemCosts.length > 0) {
+          await tx.quoteItemCost.createMany({
+            data: computed.itemCosts.map((c) => ({
+              quoteItemId: c.quoteItemId,
+              productCostId: c.productCostId,
+              name: c.name,
+              unitCostCents: c.unitCostCents,
+              unit: c.unit,
+              multiplier: c.multiplier,
+              lineCostCents: c.lineCostCents,
+            })),
+          });
+        }
+
+        const finalQuote = await tx.quote.update({
+          where: { id: updatedQuote.id },
+          data: {
+            costSetup: computed.costSetup,
+            costMonthly: computed.costMonthly,
+            costAnnual: computed.costAnnual,
+            marginAnnual: computed.marginAnnual,
+            marginPercentAnnual: computed.marginPercentAnnual,
+          },
+          include: {
+            user: { select: { name: true, email: true } },
+            items: { orderBy: { createdAt: "asc" } },
+          },
+        });
+
+        return finalQuote;
       });
 
       return NextResponse.json(updated);
@@ -207,6 +305,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         dceProductId: wantsDceUpdate ? dceProductId : quote.dceProductId,
         totalMonthly: nextTotalMonthly,
         totalAnnual: nextTotalAnnual,
+        salesStage: data.salesStage ?? quote.salesStage,
+        deliveryStage: data.deliveryStage ?? quote.deliveryStage,
+        wonAt: data.wonAt !== undefined ? (data.wonAt ? new Date(data.wonAt) : null) : quote.wonAt,
+        kickoffAt: data.kickoffAt !== undefined ? (data.kickoffAt ? new Date(data.kickoffAt) : null) : quote.kickoffAt,
+        closedAt: data.closedAt !== undefined ? (data.closedAt ? new Date(data.closedAt) : null) : quote.closedAt,
       },
       include: {
         user: { select: { name: true, email: true } },

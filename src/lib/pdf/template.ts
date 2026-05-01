@@ -924,6 +924,7 @@ function renderPage6(quote: QuoteWithRelations) {
 function renderPage8Roi(quote: QuoteWithRelations) {
   const roiSnap = parseRoiSnapshot(quote.roiSnapshot);
   const investimento = roiSnap?.valoreFatturatoProposta ?? null;
+  const investimentoMesi = roiSnap?.investimentoOrizzonteMesi ?? 12;
   const roi = roiSnap?.indice ?? null;
   const margineAttuale = roiSnap?.margineAnnuoBaseline ?? null;
   const margineAtteso = roiSnap?.margineStimatoProposta ?? null;
@@ -952,15 +953,17 @@ function renderPage8Roi(quote: QuoteWithRelations) {
     </div>
 
     <div class="no-break box box-black" style="margin-top:6mm">
-      <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">NUMERI (PRIMO ANNO)</div>
+      <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">NUMERI (INVESTIMENTO)</div>
       <div style="margin-top:4mm;display:grid;grid-template-columns:1fr 1fr;gap:8mm">
         <div>
-          <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.7)">Investimento primo anno</div>
+          <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.7)">${
+            investimentoMesi === 6 ? "Investimento 6 mesi" : "Investimento primo anno"
+          }</div>
           <div class="display" style="font-style:italic;font-size:24pt;color:var(--mc-orange);margin-top:1mm">
             ${escapeHtml(formatEuro(Math.round(investimento ?? 0)))}
           </div>
           <div class="muted" style="font-style:italic;font-size:9pt;margin-top:1mm;color:rgba(250,248,244,0.6)">
-            Setup + canoni (12 mesi) del primo anno
+            Setup + canoni (${escapeHtml(String(investimentoMesi))} mesi)
           </div>
         </div>
         <div>
@@ -974,7 +977,7 @@ function renderPage8Roi(quote: QuoteWithRelations) {
         </div>
       </div>
       <div style="margin-top:5mm;border-top:1px solid rgba(250,248,244,0.18);padding-top:4mm">
-        <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.7)">Δ margine stimato (primo anno)</div>
+        <div class="caps" style="font-size:8pt;color:rgba(250,248,244,0.7)">Δ margine stimato (annuo)</div>
         <div style="margin-top:1mm;font-weight:800;font-size:14pt;color:var(--mc-green)">
           + ${escapeHtml(formatEuro(Math.max(0, Math.round(delta ?? 0))))}
         </div>
@@ -999,9 +1002,12 @@ function renderPage8Roi(quote: QuoteWithRelations) {
 
 function renderPage9Payments(quote: QuoteWithRelations) {
   const setupTotals = computeSetupTotals(quote);
-  const primoAnnoCompleto =
-    typeof quote.totalAnnual === "number" && quote.totalAnnual > 0
-      ? quote.totalAnnual
+  const roiSnap = parseRoiSnapshot(quote.roiSnapshot);
+  const investimentoMesi = roiSnap?.investimentoOrizzonteMesi ?? 12;
+
+  const totalePeriodo =
+    typeof quote.totalSetup === "number" && typeof quote.totalMonthly === "number"
+      ? quote.totalSetup + quote.totalMonthly * investimentoMesi
       : quote.totalSetup + quote.totalMonthly * 12;
 
   const crmMonthlyFromItems = quote.items
@@ -1029,11 +1035,12 @@ function renderPage9Payments(quote: QuoteWithRelations) {
     (crmPrepay?.netOneTime ?? 0) + (aiPrepay?.netOneTime ?? 0) + (waPrepay?.netOneTime ?? 0);
 
   const oggiStandard = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
-  const oggiAnticipato = Math.round(primoAnnoCompleto * 0.95);
+  const oggiAnticipato = Math.round(totalePeriodo * 0.95);
   const rateBase = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
   const rateOggi30 = Math.round(rateBase * 0.3);
   const rateResto70 = Math.max(0, rateBase - rateOggi30);
-  const totalePrimoAnno = Math.round(primoAnnoCompleto);
+  const totaleEtichetta = investimentoMesi === 6 ? "Totale 6 mesi" : "Totale primo anno";
+  const totalePeriodoRounded = Math.round(totalePeriodo);
 
   return `
   <section class="pdf-page">
@@ -1056,22 +1063,26 @@ function renderPage9Payments(quote: QuoteWithRelations) {
             <div style="font-weight:800;font-size:13pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiStandard))}</div>
           </div>
           <div style="margin-top:3mm">
-            <div class="caps muted" style="font-size:7.5pt">Totale primo anno</div>
-            <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(totalePrimoAnno))}</div>
+            <div class="caps muted" style="font-size:7.5pt">${escapeHtml(totaleEtichetta)}</div>
+            <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(
+              formatEuro(totalePeriodoRounded)
+            )}</div>
           </div>
         </div>
 
         <div class="box" style="background:var(--mc-orange-light);border:1px solid rgba(255,106,0,0.25)">
-          <div class="caps" style="font-size:8pt;color:var(--mc-orange)">ANTICIPATO 12 MESI · -5%</div>
+          <div class="caps" style="font-size:8pt;color:var(--mc-orange)">ANTICIPATO ${escapeHtml(
+            String(investimentoMesi)
+          )} MESI · -5%</div>
           <div class="muted" style="font-style:italic;font-size:9pt;margin-top:2mm">
-            Primo anno completo in anticipo alla firma (setup + 12 mesi). Sconto 5% sul totale primo anno.
+            Pagamento anticipato alla firma (setup + ${escapeHtml(String(investimentoMesi))} mesi). Sconto 5% sul totale.
           </div>
           <div style="margin-top:4mm;border-top:1px solid rgba(255,106,0,0.22);padding-top:3mm">
             <div class="caps muted" style="font-size:7.5pt">Oggi alla firma</div>
             <div style="font-weight:800;font-size:13pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiAnticipato))}</div>
           </div>
           <div style="margin-top:3mm">
-            <div class="caps muted" style="font-size:7.5pt">Totale primo anno</div>
+            <div class="caps muted" style="font-size:7.5pt">${escapeHtml(totaleEtichetta)}</div>
             <div style="font-weight:800;font-size:12pt;color:var(--mc-black)">${escapeHtml(formatEuro(oggiAnticipato))}</div>
           </div>
         </div>

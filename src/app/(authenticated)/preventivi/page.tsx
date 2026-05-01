@@ -12,6 +12,9 @@ type Quote = {
   totalSetup: number;
   totalMonthly: number;
   totalAnnual: number;
+  costAnnual: number;
+  marginAnnual: number;
+  marginPercentAnnual: number;
   status: string;
   expiresAt: string | null;
   createdAt: string;
@@ -79,6 +82,11 @@ function formatDate(dateStr: string) {
 function daysUntil(dateStr: string) {
   const diff = new Date(dateStr).getTime() - Date.now();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function formatPct(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return `${value.toFixed(1)}%`;
 }
 
 export default function PreventiviPage() {
@@ -417,6 +425,8 @@ export default function PreventiviPage() {
                   <th className="text-right">Setup</th>
                   <th className="text-right">Canoni</th>
                   <th className="text-right">Primo anno</th>
+                  <th className="text-right">Costo 1° anno</th>
+                  <th className="text-right">Margine 1° anno</th>
                   <th>Stato</th>
                   <th className="w-8" aria-hidden="true"></th>
                 </tr>
@@ -479,6 +489,12 @@ export default function PreventiviPage() {
                       </td>
                       <td className="text-right font-semibold tabular-nums">
                         {formatEuro(q.totalAnnual)}
+                      </td>
+                      <td className="text-right text-sm tabular-nums" style={{ color: "var(--mc-text-secondary)" }}>
+                        {q.costAnnual > 0 ? formatEuro(q.costAnnual) : "—"}
+                      </td>
+                      <td className="text-right font-semibold tabular-nums" title={formatPct(q.marginPercentAnnual)}>
+                        {q.marginAnnual !== 0 ? formatEuro(q.marginAnnual) : "—"}
                       </td>
                       <td>
                         <span

@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.next_obsolete*/
 .env
 .env.local
 .env.*.local
@@ -12,5 +13,13 @@ build/
 tmp/
 prisma/dev.db
 *.tsbuildinfo
+
+# Artefatti di test/sviluppo locali, non vanno in repo.
+_test_*
+_trash_*
+*.zip
+**/page\ 2.tsx
+**/*\ 2.tsx
+**/*\ 2.ts
 
 !.env.example

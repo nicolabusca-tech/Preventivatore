@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 import { computeQuoteCosts } from "@/lib/costs";
+import { quoteDetailInclude, toQuoteDetail } from "@/lib/quotes/serialize-quote-detail";
+import type { QuoteDetail } from "@/lib/types/quote";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 
@@ -16,12 +18,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
-    include: {
-      user: { select: { name: true, email: true } },
-      items: { orderBy: { createdAt: "asc" } },
-      adjustments: { orderBy: { createdAt: "asc" } },
-      payments: { orderBy: [{ paidAt: "asc" }, { dueDate: "asc" }, { createdAt: "asc" }] },
-    },
+    include: quoteDetailInclude,
   });
 
   if (!quote) return NextResponse.json({ error: "Preventivo non trovato" }, { status: 404 });
@@ -31,7 +28,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
   }
 
-  return NextResponse.json(quote);
+  const body: QuoteDetail = toQuoteDetail(quote);
+  return NextResponse.json(body);
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

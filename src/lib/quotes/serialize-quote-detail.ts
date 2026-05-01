@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import type { QuoteDetail, QuoteDetailItem } from "@/lib/types/quote";
 
 /** Include per GET /api/quotes/[id] — solo ciò che entra in `QuoteDetail`. */
@@ -81,4 +82,14 @@ export function toQuoteDetail(quote: QuoteDetailDb): QuoteDetail {
     user: { name: quote.user.name, email: quote.user.email },
     items: quote.items.map(mapItem),
   };
+}
+
+/** Ricarica dal DB e serializza come `QuoteDetail` (POST create / duplicate / manual). */
+export async function loadQuoteDetailById(id: string): Promise<QuoteDetail | null> {
+  const row = await prisma.quote.findUnique({
+    where: { id },
+    include: quoteDetailInclude,
+  });
+  if (!row) return null;
+  return toQuoteDetail(row);
 }

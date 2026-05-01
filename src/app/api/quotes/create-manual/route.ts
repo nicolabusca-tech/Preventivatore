@@ -16,6 +16,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
+import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
 
 // I productCode interni delle righe manuali continuano a usare il prefix
 // "MANUAL_" per mantenere unicità a livello di item all'interno del preventivo.
@@ -238,5 +239,12 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json(created);
+  const detail = await loadQuoteDetailById(created.id);
+  if (!detail) {
+    return NextResponse.json(
+      { error: "Preventivo registrato ma non recuperabile. Controlla in elenco." },
+      { status: 500 }
+    );
+  }
+  return NextResponse.json(detail);
 }

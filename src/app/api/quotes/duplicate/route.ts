@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 import { computeQuoteCosts } from "@/lib/costs";
+import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
 
 function buildNextQuoteNumber(prev: string | null, year: number) {
   const prefix = `Q${year}-`;
@@ -190,6 +191,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Impossibile generare quoteNumber" }, { status: 500 });
   }
 
-  return NextResponse.json(created);
+  const detail = await loadQuoteDetailById(created.id);
+  if (!detail) {
+    return NextResponse.json({ error: "Preventivo duplicato ma non recuperabile." }, { status: 500 });
+  }
+  return NextResponse.json(detail);
 }
 

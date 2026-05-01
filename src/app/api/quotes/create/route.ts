@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 import { computeQuoteCosts } from "@/lib/costs";
+import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
@@ -287,5 +288,9 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.json(quote);
+  const detail = await loadQuoteDetailById(quote.id);
+  if (!detail) {
+    return NextResponse.json({ error: "Preventivo creato ma non recuperabile." }, { status: 500 });
+  }
+  return NextResponse.json(detail);
 }

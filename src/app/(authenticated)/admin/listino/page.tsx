@@ -21,6 +21,20 @@ type Product = {
   sortOrder: number;
 };
 
+type ProductCost = {
+  id: string;
+  productId: string;
+  name: string;
+  unitCostCents: number;
+  unitCostEuro?: string;
+  unit: string;
+  multiplierKind: string;
+  multiplierValue: number | null;
+  conditionsJson: string | null;
+  active: boolean;
+  sortOrder: number;
+};
+
 const blockLabels: Record<string, string> = {
   FRONTEND: "Front-end",
   "01": "Blocco 01 — Posizionamento",
@@ -96,6 +110,46 @@ function formatEuro(value: number) {
   }).format(value);
 }
 
+function centsToEuroInput(cents: number) {
+  const v = Number(cents || 0) / 100;
+  if (!Number.isFinite(v)) return "";
+  // Per input: niente separatori migliaia, max 2 decimali.
+  return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function parseEuroToCents(raw: string) {
+  const normalized = String(raw ?? "").trim().replace(/\s/g, "").replace(",", ".");
+  if (!normalized) return 0;
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+
+function safeParseJson(value: string | null): any | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function canoneCategoryFromBlock(block: string): "CRM" | "AIVOCALE" | "WA" | null {
+  if (block === "CANONI_CRM") return "CRM";
+  if (block === "CANONI_AIVOCALE") return "AIVOCALE";
+  if (block === "CANONI_WA") return "WA";
+  return null;
+}
+
+function setPrepayDiscountFlag(conditionsJson: string | null, nextEnabled: boolean, cat: "CRM" | "AIVOCALE" | "WA") {
+  const parsed = safeParseJson(conditionsJson);
+  const obj: Record<string, unknown> = parsed && typeof parsed === "object" ? { ...parsed } : {};
+  if (nextEnabled) obj.applyPrepayDiscountCategory = cat;
+  else delete obj.applyPrepayDiscountCategory;
+  const hasKeys = Object.keys(obj).length > 0;
+  return hasKeys ? JSON.stringify(obj) : null;
+}
+
 export default function AdminListinoPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -107,6 +161,8 @@ export default function AdminListinoPage() {
   const [message, setMessage] = useState<{ type: "success" | "danger"; text: string } | null>(
     null
   );
+  const [costsByProductId, setCostsByProductId] = useState<Record<string, ProductCost[]>>({});
+  const [costsLoading, setCostsLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(true);
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(
@@ -131,6 +187,25 @@ export default function AdminListinoPage() {
     setLoading(false);
   }
 
+  async function fetchCosts(productId: string) {
+    setCostsLoading(true);
+    try {
+      const res = await fetch(`/api/products/${productId}/costs`);
+      const data = await res.json().catch(() => []);
+      setCostsByProductId((prev) => ({
+        ...prev,
+        [productId]: Array.isArray(data)
+          ? (data as ProductCost[]).map((c) => ({
+              ...c,
+              unitCostEuro: centsToEuroInput(Number(c.unitCostCents || 0)),
+            }))
+          : [],
+      }));
+    } finally {
+      setCostsLoading(false);
+    }
+  }
+
   function startEdit(product: Product) {
     setEditing(product.id);
     setEditForm({
@@ -143,6 +218,7 @@ export default function AdminListinoPage() {
       active: product.active,
     });
     setMessage(null);
+    fetchCosts(product.id);
   }
 
   function cancelEdit() {
@@ -167,6 +243,72 @@ export default function AdminListinoPage() {
     } else {
       setMessage({ type: "danger", text: "Errore nel salvataggio." });
     }
+  }
+
+  function setCosts(productId: string, next: ProductCost[]) {
+    setCostsByProductId((prev) => ({ ...prev, [productId]: next }));
+  }
+
+  function addCostRow(productId: string) {
+    const list = costsByProductId[productId] || [];
+    const temp: ProductCost = {
+      id: `TEMP_${Math.random().toString(16).slice(2)}`,
+      productId,
+      name: "",
+      unitCostCents: 0,
+      unitCostEuro: "",
+      unit: "ONE_TIME",
+      multiplierKind: "FIXED",
+      multiplierValue: 1,
+      conditionsJson: null,
+      active: true,
+      sortOrder: list.length ? Math.max(...list.map((c) => c.sortOrder || 0)) + 1 : 0,
+    };
+    setCosts(productId, [...list, temp]);
+  }
+
+  async function saveCost(productId: string, cost: ProductCost) {
+    const isTemp = cost.id.startsWith("TEMP_");
+    const url = isTemp ? `/api/products/${productId}/costs` : `/api/product-costs/${cost.id}`;
+    const method = isTemp ? "POST" : "PATCH";
+    const payload = {
+      name: cost.name,
+      unitCostCents: Number(cost.unitCostCents || 0),
+      unit: cost.unit,
+      multiplierKind: cost.multiplierKind,
+      multiplierValue: cost.multiplierValue,
+      conditionsJson: cost.conditionsJson,
+      active: cost.active,
+      sortOrder: cost.sortOrder,
+    };
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      setMessage({ type: "danger", text: "Errore salvataggio costo." });
+      return;
+    }
+    await fetchCosts(productId);
+    setMessage({ type: "success", text: "Costo salvato." });
+    setTimeout(() => setMessage(null), 2000);
+  }
+
+  async function deleteCost(productId: string, cost: ProductCost) {
+    const isTemp = cost.id.startsWith("TEMP_");
+    if (isTemp) {
+      setCosts(productId, (costsByProductId[productId] || []).filter((c) => c.id !== cost.id));
+      return;
+    }
+    const res = await fetch(`/api/product-costs/${cost.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setMessage({ type: "danger", text: "Errore eliminazione costo." });
+      return;
+    }
+    await fetchCosts(productId);
+    setMessage({ type: "success", text: "Costo eliminato." });
+    setTimeout(() => setMessage(null), 2000);
   }
 
   async function toggleActive(product: Product) {
@@ -578,6 +720,211 @@ export default function AdminListinoPage() {
                                     })
                                   }
                                 />
+                              </div>
+
+                              <div
+                                className="mt-3 p-4 rounded-lg"
+                                style={{
+                                  background: "var(--mc-bg-inset)",
+                                  border: "1px solid var(--mc-border)",
+                                }}
+                              >
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                  <div className="font-semibold text-sm">Costi (margine interno)</div>
+                                  <button
+                                    type="button"
+                                    className="btn-ghost text-xs px-2 py-1"
+                                    onClick={() => addCostRow(p.id)}
+                                  >
+                                    + Aggiungi costo
+                                  </button>
+                                </div>
+
+                                {costsLoading ? (
+                                  <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
+                                    Caricamento costi...
+                                  </div>
+                                ) : (costsByProductId[p.id] || []).length === 0 ? (
+                                  <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
+                                    Nessun costo configurato per questa voce.
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {(costsByProductId[p.id] || []).map((c) => (
+                                      <div
+                                        key={c.id}
+                                        className="rounded-md p-3"
+                                        style={{
+                                          border: "1px solid var(--mc-border)",
+                                          background: "var(--mc-bg-elevated)",
+                                        }}
+                                      >
+                                        <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end">
+                                          <div className="sm:col-span-2">
+                                            <label className="label">Nome</label>
+                                            <input
+                                              type="text"
+                                              className="input"
+                                              value={c.name}
+                                              onChange={(e) => {
+                                                const next = (costsByProductId[p.id] || []).map((x) =>
+                                                  x.id === c.id ? { ...x, name: e.target.value } : x
+                                                );
+                                                setCosts(p.id, next);
+                                              }}
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="label">Costo unitario (€)</label>
+                                            <input
+                                              type="text"
+                                              inputMode="decimal"
+                                              className="input"
+                                              value={c.unitCostEuro ?? centsToEuroInput(c.unitCostCents)}
+                                              onChange={(e) => {
+                                                const raw = e.target.value;
+                                                const cents = parseEuroToCents(raw);
+                                                const next = (costsByProductId[p.id] || []).map((x) =>
+                                                  x.id === c.id
+                                                    ? { ...x, unitCostEuro: raw, unitCostCents: cents }
+                                                    : x
+                                                );
+                                                setCosts(p.id, next);
+                                              }}
+                                              placeholder="es. 12,50"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="label">Unità</label>
+                                            <select
+                                              className="input"
+                                              value={c.unit}
+                                              onChange={(e) => {
+                                                const next = (costsByProductId[p.id] || []).map((x) =>
+                                                  x.id === c.id ? { ...x, unit: e.target.value } : x
+                                                );
+                                                setCosts(p.id, next);
+                                              }}
+                                            >
+                                              <option value="ONE_TIME">Una tantum</option>
+                                              <option value="MONTH">Mensile</option>
+                                              <option value="YEAR">Annuale</option>
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="label">Moltiplicatore</label>
+                                            <select
+                                              className="input"
+                                              value={c.multiplierKind}
+                                              onChange={(e) => {
+                                                const next = (costsByProductId[p.id] || []).map((x) =>
+                                                  x.id === c.id ? { ...x, multiplierKind: e.target.value } : x
+                                                );
+                                                setCosts(p.id, next);
+                                              }}
+                                            >
+                                              <option value="FIXED">Fisso</option>
+                                              <option value="PER_QUOTE_ITEM">Per quantità</option>
+                                              <option value="PER_MONTHS">Valore (multiplierValue)</option>
+                                            </select>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <label className="label">Valore</label>
+                                            <input
+                                              type="number"
+                                              className="input"
+                                              value={c.multiplierValue ?? ""}
+                                              onChange={(e) => {
+                                                const raw = e.target.value;
+                                                const v = raw === "" ? null : Number(raw);
+                                                const next = (costsByProductId[p.id] || []).map((x) =>
+                                                  x.id === c.id ? { ...x, multiplierValue: Number.isFinite(v) ? v : null } : x
+                                                );
+                                                setCosts(p.id, next);
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 mt-2 items-end">
+                                          <div className="sm:col-span-4">
+                                            <label className="label">Condizioni JSON (opzionale)</label>
+                                            <input
+                                              type="text"
+                                              className="input font-mono"
+                                              value={c.conditionsJson || ""}
+                                              onChange={(e) => {
+                                                const next = (costsByProductId[p.id] || []).map((x) =>
+                                                  x.id === c.id ? { ...x, conditionsJson: e.target.value || null } : x
+                                                );
+                                                setCosts(p.id, next);
+                                              }}
+                                              placeholder='es. {"onlyIf":{"scontoCrmAnnuale":true}}'
+                                            />
+                                          </div>
+                                          <div className="flex items-center gap-2 sm:col-span-2 justify-end">
+                                            {(() => {
+                                              const cat = canoneCategoryFromBlock(p.block);
+                                              const parsed = safeParseJson(c.conditionsJson);
+                                              const enabled = !!cat && parsed?.applyPrepayDiscountCategory === cat;
+                                              return (
+                                                <label
+                                                  className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none"
+                                                  title="Se il cliente seleziona pagamento annuale anticipato (con sconto), applica lo stesso sconto anche al costo di acquisto."
+                                                  style={{ opacity: cat ? 1 : 0.45 }}
+                                                >
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={enabled}
+                                                    disabled={!cat}
+                                                    onChange={(e) => {
+                                                      if (!cat) return;
+                                                      const nextJson = setPrepayDiscountFlag(c.conditionsJson, e.target.checked, cat);
+                                                      const next = (costsByProductId[p.id] || []).map((x) =>
+                                                        x.id === c.id ? { ...x, conditionsJson: nextJson } : x
+                                                      );
+                                                      setCosts(p.id, next);
+                                                    }}
+                                                    className="checkbox"
+                                                  />
+                                                  Sconto anticipo su costo
+                                                </label>
+                                              );
+                                            })()}
+                                            <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none">
+                                              <input
+                                                type="checkbox"
+                                                checked={c.active}
+                                                onChange={(e) => {
+                                                  const next = (costsByProductId[p.id] || []).map((x) =>
+                                                    x.id === c.id ? { ...x, active: e.target.checked } : x
+                                                  );
+                                                  setCosts(p.id, next);
+                                                }}
+                                                className="checkbox"
+                                              />
+                                              Attivo
+                                            </label>
+                                            <button
+                                              type="button"
+                                              className="btn-secondary text-xs px-2 py-1"
+                                              onClick={() => void saveCost(p.id, c)}
+                                            >
+                                              Salva
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="btn-ghost text-xs px-2 py-1"
+                                              onClick={() => void deleteCost(p.id, c)}
+                                            >
+                                              Elimina
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
 
                               <div className="flex items-center gap-2 pt-2">

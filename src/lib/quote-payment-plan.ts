@@ -1,10 +1,10 @@
 import type { Prisma, Quote, QuoteItem } from "@prisma/client";
-import { applicaCodiceManuale, canonePrepayFromMonthly } from "@/lib/discounts";
-
-/** Esclusi dal setup moduli come in QuoteEditor */
-const SKIP_SETUP_CODES = new Set(["DIAGNOSI_STRATEGICA", "AUDIT_LAMPO"]);
-const DIAG_VOUCHER = 497;
-const AUDIT_VOUCHER = 147;
+import {
+  computePricing,
+  type PricingInput,
+  type PricingManualDiscount,
+  type PricingProductInfo,
+} from "@/lib/pricing/engine";
 
 export const PAYMENT_KIND = {
   SETUP_DEPOSIT: "SETUP_DEPOSIT",
@@ -30,8 +30,104 @@ function addMonthsStartOfDay(d: Date, months: number): Date {
 }
 
 /**
- * Setup netto (solo moduli una tantum listino, dopo voucher Diagnosi/Audit e sconto sul setup).
- * Non include anticipi canoni (CRM/AI/WA) nel deposit %.
+ * Costruisce un input per il pricing engine a partire da un Quote DB.
+ *
+ * Il payment-plan ha una piccola peculiarità storica rispetto al QuoteEditor:
+ * se il preventivo ha `discountPercent > 0` e `discountType` non è "manual"
+ * (es. "volume_5", "volume_10", legacy), il vecchio codice applicava comunque
+ * la percentuale al setup per calcolare il deposit. Replichiamo questo
+ * comportamento costruendo un "manualDiscount sintetico". Per il calcolo del
+ * Credito MC (che non è usato dal payment-plan) il comportamento legacy
+ * "volume_*" è invece gestito a parte nel template PDF.
+ */
+function syntheticManualDiscount(
+  quote: Pick<
+    Quote,
+    "discountType" | "discountCode" | "discountAmount" | "discountPercent"
+  >
+): PricingManualDiscount {
+  if (quote.discountType === "manual" && quote.discountCode) {
+    return {
+      code: quote.discountCode,
+      percent: quote.discountPercent || 0,
+      fixedAmount:
+        (quote.discountAmount || 0) > 0 ? quote.discountAmount : undefined,
+    };
+  }
+  if ((quote.discountPercent || 0) > 0) {
+    return {
+      code: quote.discountType || "LEGACY",
+      percent: quote.discountPercent,
+    };
+  }
+  return null;
+}
+
+/**
+ * Costruisce l'input per l'engine partendo da Quote + items + listino corrente.
+ * `productsByCode` contiene i prodotti del listino di OGGI: gli items del
+ * preventivo che riferiscono a un product non più in listino vengono saltati
+ * (è il comportamento storico del payment-plan).
+ */
+function buildPricingInputFromQuote(
+  quote: Pick<
+    Quote,
+    | "diagnosiGiaPagata"
+    | "voucherAuditApplied"
+    | "scontoCrmAnnuale"
+    | "scontoAiVocaleAnnuale"
+    | "scontoWaAnnuale"
+    | "discountType"
+    | "discountCode"
+    | "discountAmount"
+    | "discountPercent"
+  >,
+  items: Pick<QuoteItem, "productCode" | "price" | "quantity" | "isMonthly">[],
+  productsByCode: Map<string, ProductLite>
+): PricingInput {
+  const catalog: PricingProductInfo[] = Array.from(productsByCode.entries()).map(
+    ([code, p]) => ({
+      code,
+      // Il name non è rilevante per i totali: serve solo per UI breakdown.
+      name: code,
+      block: p.block,
+      // Il prezzo "vero" è quello storico salvato sull'item, non quello del
+      // catalogo corrente: lo passiamo come override sull'item.
+      price: 0,
+      isMonthly: p.isMonthly,
+    })
+  );
+
+  return {
+    catalog,
+    items: items.map((it) => ({
+      productCode: it.productCode,
+      quantity: it.quantity || 1,
+      price: it.price,
+      isMonthly: it.isMonthly,
+      // NB: NON passiamo productName. Così se il product non è più in catalog
+      // l'engine fa skip della riga (compat con vecchio computeSetupNetForDeposit).
+    })),
+    diagnosiGiaPagata: !!quote.diagnosiGiaPagata,
+    voucherAuditApplied: !!quote.voucherAuditApplied,
+    prepayments: {
+      CRM: !!quote.scontoCrmAnnuale,
+      AIVOCALE: !!quote.scontoAiVocaleAnnuale,
+      WA: !!quote.scontoWaAnnuale,
+    },
+    manualDiscount: syntheticManualDiscount(quote),
+    // Il payment-plan non guarda il credito MC: passare i legacy non serve.
+    legacyDiscountType: null,
+    legacyDiscountAmount: null,
+    legacyDiscountPercent: null,
+  };
+}
+
+/**
+ * Setup netto per il calcolo del deposit (acconto setup).
+ * = solo moduli setup (no canoni), dopo voucher Diagnosi/Audit e dopo eventuale
+ * sconto sul setup. Non include anticipi canoni (CRM/AI/WA): quelli sono
+ * computati separatamente da `computePrepayAmounts`.
  */
 export function computeSetupNetForDeposit(
   quote: Pick<
@@ -46,33 +142,21 @@ export function computeSetupNetForDeposit(
   items: Pick<QuoteItem, "productCode" | "price" | "quantity" | "isMonthly">[],
   productsByCode: Map<string, ProductLite>
 ): number {
-  let setupModules = 0;
-
-  for (const it of items) {
-    if (SKIP_SETUP_CODES.has(it.productCode)) continue;
-    const p = productsByCode.get(it.productCode);
-    if (!p || p.isMonthly) continue;
-    setupModules += it.price * (it.quantity || 1);
-  }
-
-  let setup = setupModules;
-  if (quote.diagnosiGiaPagata) setup = Math.max(0, setup - DIAG_VOUCHER);
-  if (quote.voucherAuditApplied) setup = Math.max(0, setup - AUDIT_VOUCHER);
-
-  let setupNet = setup;
-  if (quote.discountType === "manual" && quote.discountCode) {
-    const r = applicaCodiceManuale(
-      setup,
-      quote.discountPercent || 0,
-      quote.discountCode,
-      quote.discountAmount > 0 ? { fixedAmount: quote.discountAmount } : undefined
-    );
-    setupNet = Math.max(0, setup - r.amount);
-  } else if ((quote.discountPercent || 0) > 0) {
-    setupNet = Math.max(0, setup - Math.round((setup * (quote.discountPercent || 0)) / 100));
-  }
-
-  return setupNet;
+  // Costruisco l'input riempiendo i prepayments a "false": al payment-plan
+  // del deposit non interessa l'effetto dei prepay sul setup (sono calcolati a parte).
+  const out = computePricing(
+    buildPricingInputFromQuote(
+      {
+        ...quote,
+        scontoCrmAnnuale: false,
+        scontoAiVocaleAnnuale: false,
+        scontoWaAnnuale: false,
+      } as any,
+      items,
+      productsByCode
+    )
+  );
+  return out.setupNet;
 }
 
 export function computePrepayAmounts(
@@ -80,29 +164,25 @@ export function computePrepayAmounts(
   items: Pick<QuoteItem, "productCode" | "price" | "quantity" | "isMonthly">[],
   productsByCode: Map<string, ProductLite>
 ): { crm: number; ai: number; wa: number } {
-  let crmMonthly = 0;
-  let aiMonthly = 0;
-  let waMonthly = 0;
-
-  for (const it of items) {
-    const p = productsByCode.get(it.productCode);
-    if (!p || !p.isMonthly) continue;
-    const line = it.price * (it.quantity || 1);
-    if (p.block === "CANONI_CRM") crmMonthly += line;
-    else if (p.block === "CANONI_AIVOCALE") aiMonthly += line;
-    else if (p.block === "CANONI_WA") waMonthly += line;
-  }
-
-  const crm =
-    quote.scontoCrmAnnuale && crmMonthly > 0 ? canonePrepayFromMonthly(crmMonthly, "CRM").netOneTime : 0;
-  const ai =
-    quote.scontoAiVocaleAnnuale && aiMonthly > 0
-      ? canonePrepayFromMonthly(aiMonthly, "AIVOCALE").netOneTime
-      : 0;
-  const wa =
-    quote.scontoWaAnnuale && waMonthly > 0 ? canonePrepayFromMonthly(waMonthly, "WA").netOneTime : 0;
-
-  return { crm, ai, wa };
+  // Per i prepay non servono i campi sconto: passo zero/default.
+  const out = computePricing(
+    buildPricingInputFromQuote(
+      {
+        diagnosiGiaPagata: false,
+        voucherAuditApplied: false,
+        scontoCrmAnnuale: !!quote.scontoCrmAnnuale,
+        scontoAiVocaleAnnuale: !!quote.scontoAiVocaleAnnuale,
+        scontoWaAnnuale: !!quote.scontoWaAnnuale,
+        discountType: null,
+        discountCode: null,
+        discountAmount: 0,
+        discountPercent: 0,
+      } as any,
+      items,
+      productsByCode
+    )
+  );
+  return { crm: out.prepaidCrm, ai: out.prepaidAi, wa: out.prepaidWa };
 }
 
 export function buildDefaultPaymentPlan(opts: {
@@ -114,7 +194,10 @@ export function buildDefaultPaymentPlan(opts: {
   depositPercent?: number;
 }): PlanRowInput[] {
   const { quote, items, productsByCode, acquisitionDate, deliveryExpectedAt } = opts;
-  const pct = Math.min(100, Math.max(0, Number(opts.depositPercent ?? quote.depositPercent ?? 30)));
+  const pct = Math.min(
+    100,
+    Math.max(0, Number(opts.depositPercent ?? quote.depositPercent ?? 30))
+  );
 
   const setupNet = computeSetupNetForDeposit(quote, items, productsByCode);
   const depositAmount = Math.round((setupNet * pct) / 100);

@@ -191,16 +191,17 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
       const ok = window.confirm("Verranno rigenerate solo le mensilità (le rate setup restano). Procedere?");
       if (!ok) return;
     }
+    const payload: Record<string, unknown> = {
+      scope,
+      depositPercent: Math.min(100, Math.max(0, Math.round(deposit))),
+      replaceExisting: true,
+    };
+    if (startDate) payload.acquisitionDate = startDate;
+    if (endDate) payload.deliveryExpectedAt = endDate;
     const res = await fetch(`/api/quotes/${quote!.id}/payments/generate-plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scope,
-        acquisitionDate: startDate || undefined,
-        deliveryExpectedAt: endDate || undefined,
-        depositPercent: deposit,
-        replaceExisting: true,
-      }),
+      body: JSON.stringify(payload),
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new Error(body?.error || "Errore generazione piano");
@@ -359,47 +360,69 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
               </button>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn-primary text-sm"
-              disabled={busy}
-              onClick={async () => {
-                setError(null);
-                setBusy(true);
-                try {
-                  await generatePlan("all");
-                  await onChanged();
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : "Errore inatteso");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Genera piano completo
-            </button>
-            {quote.totalMonthly > 0 && (
-              <button
-                type="button"
-                className="btn-ghost text-sm"
-                disabled={busy}
-                onClick={async () => {
-                  setError(null);
-                  setBusy(true);
-                  try {
-                    await generatePlan("monthly");
-                    await onChanged();
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : "Errore inatteso");
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Rigenera solo mensilità
-              </button>
-            )}
+          <div className="mt-3 flex flex-wrap gap-2 items-center">
+            {(() => {
+              const hasMonthly = quote.totalMonthly > 0;
+              const missingEnd = hasMonthly && !endDate;
+              const missingStart = !startDate;
+              const blockAll = missingStart || missingEnd;
+              const allTitle = missingStart
+                ? "Imposta la data inizio"
+                : missingEnd
+                  ? "Imposta la data fine: serve per le mensilità"
+                  : "Genera tutto: acconto + anticipi + 12 mensilità";
+              return (
+                <>
+                  <button
+                    type="button"
+                    className="btn-primary text-sm"
+                    disabled={busy || blockAll}
+                    title={allTitle}
+                    onClick={async () => {
+                      setError(null);
+                      setBusy(true);
+                      try {
+                        await generatePlan("all");
+                        await onChanged();
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "Errore inatteso");
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Genera piano completo
+                  </button>
+                  {hasMonthly && (
+                    <button
+                      type="button"
+                      className="btn-ghost text-sm"
+                      disabled={busy || !endDate}
+                      title={!endDate ? "Imposta la data fine per generare le mensilità" : "Rigenera solo le 12 mensilità (preserva le rate setup)"}
+                      onClick={async () => {
+                        setError(null);
+                        setBusy(true);
+                        try {
+                          await generatePlan("monthly");
+                          await onChanged();
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : "Errore inatteso");
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Rigenera solo mensilità
+                    </button>
+                  )}
+                  {blockAll && (
+                    <span className="text-[11px]" style={{ color: "var(--mc-warning)" }}>
+                      {missingStart ? "Manca data inizio" : "Manca data fine (serve per le mensilità)"}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </section>
 

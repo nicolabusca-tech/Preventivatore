@@ -241,7 +241,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         return finalQuote;
       });
 
-      return NextResponse.json(updated);
+      return NextResponse.json(toQuoteDetail(updated));
     } catch (e) {
       console.error("Errore aggiornamento bozza:", e);
       return NextResponse.json({ error: "Errore durante l'aggiornamento della bozza" }, { status: 500 });
@@ -332,7 +332,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     });
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json(toQuoteDetail(updated));
   } catch (e) {
     if (e instanceof Error && e.message === "DCE_INVALID") {
       return NextResponse.json(

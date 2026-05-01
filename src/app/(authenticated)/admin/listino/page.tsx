@@ -110,6 +110,20 @@ function formatEuro(value: number) {
   }).format(value);
 }
 
+function formatEuroFromCents(cents: number) {
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format((Number(cents || 0) || 0) / 100);
+}
+
+function formatPct(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return `${value.toFixed(1)}%`;
+}
+
 function centsToEuroInput(cents: number) {
   const v = Number(cents || 0) / 100;
   if (!Number.isFinite(v)) return "";
@@ -148,6 +162,20 @@ function setPrepayDiscountFlag(conditionsJson: string | null, nextEnabled: boole
   else delete obj.applyPrepayDiscountCategory;
   const hasKeys = Object.keys(obj).length > 0;
   return hasKeys ? JSON.stringify(obj) : null;
+}
+
+function computeCostMultiplierForListino(c: ProductCost) {
+  const kind = String(c.multiplierKind || "FIXED").toUpperCase();
+  if (kind === "PER_QUOTE_ITEM") return 1; // in listino non abbiamo qty: assumiamo per unità
+  const v = c.multiplierValue != null ? Number(c.multiplierValue) : 1;
+  if (!Number.isFinite(v) || v <= 0) return 1;
+  return v;
+}
+
+function annualEqFromUnit(unit: string, cents: number) {
+  const u = String(unit || "").toUpperCase();
+  if (u === "MONTH") return cents * 12;
+  return cents;
 }
 
 export default function AdminListinoPage() {
@@ -739,6 +767,66 @@ export default function AdminListinoPage() {
                                     + Aggiungi costo
                                   </button>
                                 </div>
+
+                                {(() => {
+                                  const costs = (costsByProductId[p.id] || []).filter((c) => c.active);
+                                  const totalCostAnnualEqCents = costs.reduce((sum, c) => {
+                                    const mult = computeCostMultiplierForListino(c);
+                                    const line = Math.round(Number(c.unitCostCents || 0) * mult);
+                                    return sum + annualEqFromUnit(c.unit, line);
+                                  }, 0);
+
+                                  const revenueAnnualEqCents = Math.round(
+                                    Number((editForm.price ?? p.price) || 0) * 100 * (p.isMonthly ? 12 : 1)
+                                  );
+                                  const marginCents = revenueAnnualEqCents - totalCostAnnualEqCents;
+                                  const marginPct =
+                                    revenueAnnualEqCents > 0 ? (marginCents / revenueAnnualEqCents) * 100 : 0;
+
+                                  return (
+                                    <div
+                                      className="rounded-lg p-3 mb-3"
+                                      style={{
+                                        background: "var(--mc-bg-elevated)",
+                                        border: "1px solid var(--mc-border)",
+                                      }}
+                                    >
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                        <div>
+                                          <div className="text-xs font-semibold" style={{ color: "var(--mc-text-muted)" }}>
+                                            Prezzo (annuo eq.)
+                                          </div>
+                                          <div className="font-semibold tabular-nums">{formatEuroFromCents(revenueAnnualEqCents)}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-semibold" style={{ color: "var(--mc-text-muted)" }}>
+                                            Costi (annuo eq.)
+                                          </div>
+                                          <div className="font-semibold tabular-nums">{formatEuroFromCents(totalCostAnnualEqCents)}</div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-semibold" style={{ color: "var(--mc-text-muted)" }}>
+                                            Margine (annuo eq.)
+                                          </div>
+                                          <div className="font-semibold tabular-nums" style={{ color: marginCents >= 0 ? "var(--mc-success)" : "var(--mc-danger)" }}>
+                                            {formatEuroFromCents(marginCents)}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-semibold" style={{ color: "var(--mc-text-muted)" }}>
+                                            Margine %
+                                          </div>
+                                          <div className="font-semibold tabular-nums" style={{ color: marginPct >= 60 ? "var(--mc-success)" : marginPct >= 30 ? "var(--mc-warning)" : "var(--mc-danger)" }}>
+                                            {formatPct(marginPct)}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="text-xs mt-2" style={{ color: "var(--mc-text-muted)" }}>
+                                        Base “annuo equivalente”: i mensili vengono moltiplicati ×12.
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
 
                                 {costsLoading ? (
                                   <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>

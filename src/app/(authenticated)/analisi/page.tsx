@@ -379,6 +379,7 @@ export default function AnalisiPage() {
                 <div className="font-semibold">Preventivi</div>
                 <div className="text-xs mt-0.5 leading-snug" style={{ color: "var(--mc-text-muted)" }}>
                   Date acquisizione/consegna, acconto sul setup e generazione rate (mensilità dal mese dopo la consegna prevista).
+                  <span className="hidden md:inline"> · Scorri l&apos;elenco nell&apos;area tabella (scroll verticale dedicato).</span>
                 </div>
               </div>
               <div className="flex flex-row flex-nowrap items-center gap-2 min-w-0 flex-1 lg:justify-end overflow-x-auto pb-0.5 [scrollbar-gutter:stable]">
@@ -412,7 +413,11 @@ export default function AnalisiPage() {
               </div>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div
+            className="analisi-table-scroll-host overflow-x-auto md:overflow-y-auto md:max-h-[min(72vh,calc(100dvh-260px))] overscroll-y-contain"
+            role="region"
+            aria-label="Elenco preventivi, scorrevole"
+          >
             <table className="mc-table mc-table-sticky-head">
               <thead>
                 <tr>
@@ -708,8 +713,10 @@ export default function AnalisiPage() {
               </tbody>
             </table>
           </div>
+      </div>
 
-          <div className="px-5 py-4" style={{ borderTop: "1px solid var(--mc-border)" }}>
+      <div className="card">
+        <div className="px-5 py-4">
             <div className="flex flex-col sm:flex-row sm:items-end gap-3">
               <div className="flex-1">
                 <div className="label">Aggiungi riga extra (ricavo/costo) a un preventivo</div>
@@ -782,7 +789,7 @@ export default function AnalisiPage() {
               <div className="label">Note (opzionale)</div>
               <input className="input" value={adjNotes} onChange={(e) => setAdjNotes(e.target.value)} placeholder="Note interne..." />
             </div>
-          </div>
+        </div>
       </div>
 
       <div className="card">
@@ -792,7 +799,11 @@ export default function AnalisiPage() {
             Mostra solo i pagamenti non incassati; puoi segnarli come pagati.
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div
+          className="analisi-table-scroll-host overflow-x-auto md:overflow-y-auto md:max-h-[min(55vh,calc(100dvh-340px))] overscroll-y-contain"
+          role="region"
+          aria-label="Rate aperte, elenco scorrevole"
+        >
           <table className="mc-table mc-table-sticky-head">
             <thead>
               <tr>

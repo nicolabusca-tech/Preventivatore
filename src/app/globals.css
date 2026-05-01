@@ -486,6 +486,19 @@ textarea.input {
   border-top-right-radius: 0;
 }
 
+/* Analisi: scroll verticale dentro il box (tablet/desktop). Thead sticky top:0 rispetto al box. */
+@media (min-width: 768px) {
+  .analisi-table-scroll-host {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .analisi-table-scroll-host .mc-table.mc-table-sticky-head thead th {
+    top: 0;
+    z-index: 20;
+  }
+}
+
 .mc-table tbody tr {
   transition: background-color 0.1s ease;
 }

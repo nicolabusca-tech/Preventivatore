@@ -125,6 +125,25 @@ export default function AnalisiPage() {
     return rev > 0 ? (m / rev) * 100 : 0;
   }, [data]);
 
+  const filteredQuotes = useMemo(() => {
+    if (!data?.quotes) return [];
+    const q = tableQuery.trim().toLowerCase();
+    const base = data.quotes.filter((x) => {
+      if (salesFilter !== "all" && (x.salesStage || "open") !== salesFilter) return false;
+      if (deliveryFilter !== "all" && (x.deliveryStage || "not_started") !== deliveryFilter) return false;
+      if (!q) return true;
+      const hay = `${x.quoteNumber} ${x.clientName} ${x.clientCompany || ""} ${x.user?.name || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+    if (rowLimit === "all") return base;
+    return base.slice(0, rowLimit);
+  }, [data, tableQuery, salesFilter, deliveryFilter, rowLimit]);
+
+  const unpaidPayments = useMemo(() => {
+    if (!data?.payments) return [];
+    return data.payments.filter((p) => !p.paidAt);
+  }, [data]);
+
   async function patchQuote(id: string, payload: Record<string, unknown>) {
     setError(null);
     const res = await fetch(`/api/quotes/${id}`, {
@@ -202,21 +221,6 @@ export default function AnalisiPage() {
       </div>
     );
   }
-
-  const unpaid = data.payments.filter((p) => !p.paidAt);
-
-  const filteredQuotes = useMemo(() => {
-    const q = tableQuery.trim().toLowerCase();
-    const base = data.quotes.filter((x) => {
-      if (salesFilter !== "all" && (x.salesStage || "open") !== salesFilter) return false;
-      if (deliveryFilter !== "all" && (x.deliveryStage || "not_started") !== deliveryFilter) return false;
-      if (!q) return true;
-      const hay = `${x.quoteNumber} ${x.clientName} ${x.clientCompany || ""} ${x.user?.name || ""}`.toLowerCase();
-      return hay.includes(q);
-    });
-    if (rowLimit === "all") return base;
-    return base.slice(0, rowLimit);
-  }, [data.quotes, tableQuery, salesFilter, deliveryFilter, rowLimit]);
 
   const stageLabel = (s: string) => {
     if (s === "open") return "In trattativa";
@@ -297,7 +301,7 @@ export default function AnalisiPage() {
         <div className="stat-card text-left">
           <div className="stat-label">Da incassare</div>
           <div className="stat-value">{formatEuro(data.cash.outstanding)}</div>
-          <div className="stat-sub">{unpaid.length} rate aperte</div>
+          <div className="stat-sub">{unpaidPayments.length} rate aperte</div>
         </div>
       </div>
 
@@ -609,14 +613,14 @@ export default function AnalisiPage() {
               </tr>
             </thead>
             <tbody>
-              {unpaid.length === 0 ? (
+              {unpaidPayments.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-sm" style={{ color: "var(--mc-text-muted)" }}>
                     Nessun pagamento aperto.
                   </td>
                 </tr>
               ) : (
-                unpaid
+                unpaidPayments
                   .slice()
                   .sort((a, b) => {
                     const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;

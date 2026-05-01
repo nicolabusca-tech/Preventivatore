@@ -10,49 +10,15 @@ import {
   YAxis,
   Tooltip,
 } from "recharts";
-import PaymentsDrawer, { type DrawerPayment, type DrawerQuote } from "@/components/PaymentsDrawer";
+import PaymentsDrawer from "@/components/PaymentsDrawer";
 import {
   FASE_OPTIONS,
   type FaseValue,
   deriveFase as deriveFaseShared,
   fasePatch as fasePatchShared,
 } from "@/lib/fase";
-
-type AnalyticsQuote = {
-  id: string;
-  quoteNumber: string;
-  clientName: string;
-  clientCompany: string | null;
-  createdAt: string;
-  user: { name: string };
-  totalSetup: number;
-  totalMonthly: number;
-  totalAnnual: number;
-  costAnnual: number;
-  effectiveRevenueAnnual: number;
-  effectiveCostAnnual: number;
-  salesStage: string;
-  deliveryStage: string;
-  wonAt: string | null;
-  deliveryExpectedAt: string | null;
-  depositPercent?: number;
-};
-
-type AnalyticsPayment = DrawerPayment & {
-  quoteId: string;
-  quoteNumber: string;
-  clientName: string;
-};
-
-type AcquiredPoint = { month: string; label: string; monthValue: number; cumulative: number };
-
-type AnalyticsResponse = {
-  summary: { count: number; wonCount: number; lostCount: number };
-  quotes: AnalyticsQuote[];
-  payments: AnalyticsPayment[];
-  cash: { paid: number; outstanding: number };
-  acquiredCumulative?: AcquiredPoint[];
-};
+import type { AnalyticsQuote, AnalyticsResponse } from "@/lib/types/analytics";
+import type { DrawerPayment, DrawerQuote } from "@/lib/types/payments-drawer";
 
 function deriveFase(q: AnalyticsQuote): FaseValue {
   return deriveFaseShared(q);

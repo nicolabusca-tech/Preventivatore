@@ -1,28 +1,9 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import type { DrawerPayment, DrawerQuote } from "@/lib/types/payments-drawer";
 
-export type DrawerPayment = {
-  id: string;
-  amount: number;
-  dueDate: string | null;
-  paidAt: string | null;
-  notes: string | null;
-  kind: string | null;
-};
-
-export type DrawerQuote = {
-  id: string;
-  quoteNumber: string;
-  clientName: string;
-  clientCompany: string | null;
-  totalSetup: number;
-  totalMonthly: number;
-  totalAnnual: number;
-  wonAt: string | null;
-  deliveryExpectedAt: string | null;
-  depositPercent: number;
-};
+export type { DrawerPayment, DrawerQuote } from "@/lib/types/payments-drawer";
 
 type Props = {
   open: boolean;

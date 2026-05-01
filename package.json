@@ -15,7 +15,8 @@
     "test:pricing": "tsx scripts/test-pricing-parity.ts",
     "test:payment-plan": "tsx scripts/test-payment-plan-parity.ts",
     "test:pdf-layout": "tsx scripts/test-pdf-layout.ts",
-    "test": "npm run test:credito && npm run test:pricing && npm run test:payment-plan && npm run test:pdf-layout"
+    "test:csrf": "tsx scripts/test-csrf.ts",
+    "test": "npm run test:credito && npm run test:pricing && npm run test:payment-plan && npm run test:pdf-layout && npm run test:csrf"
   },
   "dependencies": {
     "@prisma/client": "^5.19.0",

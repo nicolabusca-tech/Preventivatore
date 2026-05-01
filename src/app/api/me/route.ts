@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { assertCsrf } from "@/lib/security/csrf";
 import bcrypt from "bcryptjs";
 
 function isValidEmail(email: string) {
@@ -24,6 +25,11 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  try {
+    assertCsrf(req);
+  } catch {
+    return NextResponse.json({ error: "CSRF" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const nextEmailRaw = typeof body?.email === "string" ? body.email : undefined;

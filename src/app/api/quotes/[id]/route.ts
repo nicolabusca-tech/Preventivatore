@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
+import { assertCsrf } from "@/lib/security/csrf";
 import { computeQuoteCosts } from "@/lib/costs";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
@@ -36,6 +37,11 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  try {
+    assertCsrf(req);
+  } catch {
+    return NextResponse.json({ error: "CSRF" }, { status: 403 });
+  }
 
   await ensureQuoteSchema();
 
@@ -344,6 +350,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  try {
+    assertCsrf(req);
+  } catch {
+    return NextResponse.json({ error: "CSRF" }, { status: 403 });
+  }
 
   const quote = await prisma.quote.findUnique({ where: { id: params.id } });
   if (!quote) return NextResponse.json({ error: "Non trovato" }, { status: 404 });

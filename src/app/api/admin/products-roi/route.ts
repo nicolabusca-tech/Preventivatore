@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { assertCsrf } from "@/lib/security/csrf";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -30,6 +31,11 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+  try {
+    assertCsrf(req);
+  } catch {
+    return NextResponse.json({ error: "CSRF" }, { status: 403 });
+  }
   if (session.user.role !== "admin") {
     return NextResponse.json({ error: "Solo admin" }, { status: 403 });
   }

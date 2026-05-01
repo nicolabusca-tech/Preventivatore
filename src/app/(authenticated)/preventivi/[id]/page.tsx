@@ -6,6 +6,9 @@ import Link from "next/link";
 import { computeCreditoMetodoCantiere } from "@/lib/discounts";
 import { parseRoiSnapshot } from "@/lib/roi";
 import { QuoteEditor, type QuoteEditorInitialData } from "@/components/QuoteEditor";
+import { deriveFase, getFaseOption, faseToneStyle } from "@/lib/fase";
+
+const MANUAL_PRODUCT_CODE_PREFIX = "MANUAL_";
 
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 const DIAGNOSI_VOUCHER_AMOUNT = 497;
@@ -307,15 +310,17 @@ export default function DettaglioPreventivoPage() {
     discountPercent: quote.discountPercent,
   });
 
-  const statusBadge = (() => {
-    if (quote.status === "sent") return { label: "Inviato", class: "badge-sent" };
-    if (quote.status === "viewed") return { label: "Visualizzato", class: "badge-accepted" };
-    return { label: quote.status, class: "" };
-  })();
+  const fase = deriveFase(quote);
+  const faseOpt = getFaseOption(fase);
+  const isManualQuote =
+    quote.items.length > 0 &&
+    quote.items.every((it) => it.productCode.startsWith(MANUAL_PRODUCT_CODE_PREFIX));
 
   const bannerText = (() => {
-    if (quote.status === "sent") return quote.sentAt ? `Inviato il ${formatDateTime(quote.sentAt)}` : "Inviato";
-    if (quote.status === "viewed") return quote.viewedAt ? `Visualizzato il ${formatDateTime(quote.viewedAt)}` : "Visualizzato";
+    if (quote.status === "sent")
+      return quote.sentAt ? `Inviato il ${formatDateTime(quote.sentAt)}` : "Inviato";
+    if (quote.status === "viewed")
+      return quote.viewedAt ? `Visualizzato il ${formatDateTime(quote.viewedAt)}` : "Visualizzato";
     return null;
   })();
 
@@ -362,35 +367,56 @@ export default function DettaglioPreventivoPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className={`badge ${statusBadge.class} text-sm px-3 py-1.5`}>
-              <span className="badge-dot" />
-              {statusBadge.label}
-            </span>
-            <a href={`/api/quotes/${quote.id}/pdf`} className="btn-secondary text-sm">
-              Scarica PDF
-            </a>
-            <button
-              type="button"
-              className="btn-primary text-sm"
-              onClick={async () => {
-                const ok = window.confirm("Duplicare questo preventivo come nuova bozza?");
-                if (!ok) return;
-                const res = await fetch("/api/quotes/duplicate", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ quoteId: quote.id }),
-                });
-                const body = await res.json().catch(() => null);
-                if (res.ok && body?.id) {
-                  window.location.href = `/preventivi/${body.id}`;
-                } else {
-                  alert((body && body.error) || "Errore duplicazione bozza");
-                }
-              }}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="badge text-sm px-3 py-1.5"
+              style={faseToneStyle(faseOpt.tone)}
+              title="Fase pipeline (modificabile da Analisi e dalla lista preventivi)"
             >
-              Duplica come nuova bozza
-            </button>
+              <span className="badge-dot" />
+              {faseOpt.label}
+            </span>
+            {isManualQuote && (
+              <span
+                className="badge text-xs px-2.5 py-1"
+                style={{
+                  background: "rgba(148,163,184,0.16)",
+                  color: "var(--mc-text-secondary)",
+                  borderColor: "rgba(148,163,184,0.45)",
+                }}
+                title="Preventivo creato manualmente (servizio non standardizzato)"
+              >
+                Manuale
+              </span>
+            )}
+            {!isManualQuote && (
+              <a href={`/api/quotes/${quote.id}/pdf`} className="btn-secondary text-sm">
+                Scarica PDF
+              </a>
+            )}
+            {!isManualQuote && (
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                onClick={async () => {
+                  const ok = window.confirm("Duplicare questo preventivo come nuova bozza?");
+                  if (!ok) return;
+                  const res = await fetch("/api/quotes/duplicate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ quoteId: quote.id }),
+                  });
+                  const body = await res.json().catch(() => null);
+                  if (res.ok && body?.id) {
+                    window.location.href = `/preventivi/${body.id}`;
+                  } else {
+                    alert((body && body.error) || "Errore duplicazione bozza");
+                  }
+                }}
+              >
+                Duplica come nuova bozza
+              </button>
+            )}
           </div>
         </div>
 

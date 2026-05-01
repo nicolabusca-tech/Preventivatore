@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandLogo } from "./BrandLogo";
@@ -10,11 +10,25 @@ import { BrandLogo } from "./BrandLogo";
 export function Navbar() {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const isAdmin = session?.user?.role === "admin";
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Click su "Nuovo preventivo": forziamo un token fresco in URL così la pagina
+  // /preventivi/nuovo rimonta il QuoteEditor e azzera tutti i totali/voci.
+  // Lasciamo passare i modificatori (cmd/ctrl/shift/middle-click) per non rompere
+  // l'apertura in nuova scheda.
+  function handleNuovoPreventivoClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (typeof e.button === "number" && e.button !== 0) return;
+    e.preventDefault();
+    setMobileMenuOpen(false);
+    setUserMenuOpen(false);
+    router.push(`/preventivi/nuovo?n=${Date.now()}`);
+  }
 
   // Chiudi user menu cliccando fuori
   useEffect(() => {
@@ -35,6 +49,7 @@ export function Navbar() {
   const commercialItems = [
     { href: "/preventivi", label: "I miei preventivi" },
     { href: "/preventivi/nuovo", label: "Nuovo preventivo" },
+    { href: "/preventivi/manuale", label: "Nuovo manuale" },
     { href: "/analisi", label: "Analisi" },
   ];
 
@@ -93,6 +108,11 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={
+                  item.href === "/preventivi/nuovo"
+                    ? handleNuovoPreventivoClick
+                    : undefined
+                }
                 className={`nav-link ${isActive(item.href) ? "nav-link-active" : ""}`}
               >
                 {item.label}
@@ -196,6 +216,11 @@ export function Navbar() {
                       <Link
                         key={item.href}
                         href={item.href}
+                        onClick={
+                          item.href === "/preventivi/nuovo"
+                            ? handleNuovoPreventivoClick
+                            : undefined
+                        }
                         className="block px-4 py-2 text-sm transition-colors"
                         style={{
                           color: isActive(item.href)

@@ -11,6 +11,12 @@ import {
   Tooltip,
 } from "recharts";
 import PaymentsDrawer, { type DrawerPayment, type DrawerQuote } from "@/components/PaymentsDrawer";
+import {
+  FASE_OPTIONS,
+  type FaseValue,
+  deriveFase as deriveFaseShared,
+  fasePatch as fasePatchShared,
+} from "@/lib/fase";
 
 type AnalyticsQuote = {
   id: string;
@@ -48,39 +54,12 @@ type AnalyticsResponse = {
   acquiredCumulative?: AcquiredPoint[];
 };
 
-type FaseValue = "in_trattativa" | "won_not_started" | "won_in_progress" | "won_done" | "lost";
-
-const FASE_OPTIONS: { value: FaseValue; label: string; tone: "muted" | "accent" | "success" | "danger" }[] = [
-  { value: "in_trattativa", label: "In trattativa", tone: "muted" },
-  { value: "won_not_started", label: "Acquisito · da iniziare", tone: "accent" },
-  { value: "won_in_progress", label: "In corso", tone: "accent" },
-  { value: "won_done", label: "Completato", tone: "success" },
-  { value: "lost", label: "Perso", tone: "danger" },
-];
-
 function deriveFase(q: AnalyticsQuote): FaseValue {
-  if (q.salesStage === "lost") return "lost";
-  if (q.salesStage === "won") {
-    if (q.deliveryStage === "done") return "won_done";
-    if (q.deliveryStage === "in_progress") return "won_in_progress";
-    return "won_not_started";
-  }
-  return "in_trattativa";
+  return deriveFaseShared(q);
 }
 
 function fasePatch(value: FaseValue, currentWonAt: string | null): Record<string, unknown> {
-  switch (value) {
-    case "in_trattativa":
-      return { salesStage: "open", deliveryStage: "not_started", wonAt: null };
-    case "won_not_started":
-      return { salesStage: "won", deliveryStage: "not_started", wonAt: currentWonAt ?? new Date().toISOString() };
-    case "won_in_progress":
-      return { salesStage: "won", deliveryStage: "in_progress", wonAt: currentWonAt ?? new Date().toISOString() };
-    case "won_done":
-      return { salesStage: "won", deliveryStage: "done", wonAt: currentWonAt ?? new Date().toISOString() };
-    case "lost":
-      return { salesStage: "lost", deliveryStage: "not_started" };
-  }
+  return fasePatchShared(value, currentWonAt);
 }
 
 function formatEuro(value: number) {
@@ -155,6 +134,26 @@ export default function AnalisiPage() {
     };
   }, [range]);
 
+  // Ricarica quando: la pagina torna in vista (focus/bfcache/visibility) oppure
+  // un'altra pagina dell'app dichiara di aver modificato un preventivo.
+  useEffect(() => {
+    function maybeRefresh() {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void refresh();
+    }
+    window.addEventListener("focus", maybeRefresh);
+    window.addEventListener("pageshow", maybeRefresh);
+    document.addEventListener("visibilitychange", maybeRefresh);
+    window.addEventListener("mc:quote-updated", maybeRefresh as EventListener);
+    return () => {
+      window.removeEventListener("focus", maybeRefresh);
+      window.removeEventListener("pageshow", maybeRefresh);
+      document.removeEventListener("visibilitychange", maybeRefresh);
+      window.removeEventListener("mc:quote-updated", maybeRefresh as EventListener);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
+
   const filteredQuotes = useMemo(() => {
     if (!data?.quotes) return [];
     const q = tableQuery.trim().toLowerCase();
@@ -195,6 +194,11 @@ export default function AnalisiPage() {
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       throw new Error(body?.error || "Errore aggiornamento preventivo");
+    }
+    // Notifica altre pagine già montate (es. /preventivi cached) che il
+    // preventivo è cambiato: si rifaranno il fetch quando torneranno in vista.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("mc:quote-updated", { detail: { id } }));
     }
   }
 

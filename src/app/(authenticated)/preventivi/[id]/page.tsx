@@ -8,8 +8,6 @@ import { parseRoiSnapshot } from "@/lib/roi";
 import { QuoteEditor, type QuoteEditorInitialData } from "@/components/QuoteEditor";
 import { deriveFase, getFaseOption, faseToneStyle } from "@/lib/fase";
 
-const MANUAL_PRODUCT_CODE_PREFIX = "MANUAL_";
-
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 const DIAGNOSI_VOUCHER_AMOUNT = 497;
 const AUDIT_VOUCHER_AMOUNT = 147;
@@ -46,6 +44,7 @@ type QuoteDetail = {
   costAnnual: number;
   marginAnnual: number;
   marginPercentAnnual: number;
+  kind: string;
   salesStage: string;
   deliveryStage: string;
   wonAt: string | null;
@@ -312,9 +311,11 @@ export default function DettaglioPreventivoPage() {
 
   const fase = deriveFase(quote);
   const faseOpt = getFaseOption(fase);
-  const isManualQuote =
-    quote.items.length > 0 &&
-    quote.items.every((it) => it.productCode.startsWith(MANUAL_PRODUCT_CODE_PREFIX));
+  // Marker esplicito (vedi schema.prisma): preventivi creati con
+  // /api/quotes/create-manual hanno kind="MANUAL". Tutti gli altri sono
+  // STANDARD. Per i preventivi storici precedenti a questo campo, la
+  // migration ha fatto un backfill basato sui productCode "MANUAL_*".
+  const isManualQuote = quote.kind === "MANUAL";
 
   const bannerText = (() => {
     if (quote.status === "sent")

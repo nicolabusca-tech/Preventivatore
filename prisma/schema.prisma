@@ -123,6 +123,10 @@ model Quote {
   scontoAiVocaleAnnuale Boolean     @default(false)
   scontoWaAnnuale       Boolean     @default(false)
   voucherAuditApplied   Boolean     @default(false)
+  // Tipo del preventivo:
+  //  - STANDARD: composto dal listino (workflow QuoteEditor + PDF + invio)
+  //  - MANUAL:   composto a voci libere fuori dal listino (no PDF/email)
+  kind                  String      @default("STANDARD")
   status                String      @default("draft")
   sentAt                DateTime?
   viewedAt              DateTime?
@@ -145,6 +149,9 @@ model QuoteItem {
   price       Int
   quantity    Int      @default(1)
   isMonthly   Boolean  @default(false)
+  // true = riga "manuale" (descrizione+importo libero, fuori listino).
+  // false = riga proveniente dal listino standard (Product.code).
+  isCustom    Boolean  @default(false)
   notes       String?
   createdAt   DateTime @default(now())
   quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)

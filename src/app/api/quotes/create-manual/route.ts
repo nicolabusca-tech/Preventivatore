@@ -4,7 +4,8 @@
 //  - stessa numerazione Q{anno}-{progressivo}
 //  - appare in "I miei preventivi" e in Analisi
 //  - la fase pipeline è gestita come per i preventivi standard
-//  - identificato in lettura dal prefix `MANUAL_` sui productCode degli items
+//  - identificato esplicitamente da `Quote.kind = "MANUAL"` (i suoi items
+//    hanno tutti `QuoteItem.isCustom = true`).
 //
 // Niente PDF/email: status iniziale = "sent" (registrato come "consegnato a mano"),
 // non passa dal flusso /api/quotes/send.
@@ -16,6 +17,10 @@ import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 
+// I productCode interni delle righe manuali continuano a usare il prefix
+// "MANUAL_" per mantenere unicità a livello di item all'interno del preventivo.
+// La detection a livello di preventivo/voce non si basa più su questo prefix
+// ma sui campi espliciti `Quote.kind` e `QuoteItem.isCustom`.
 export const MANUAL_PRODUCT_CODE_PREFIX = "MANUAL_";
 
 type IncomingLine = {
@@ -131,6 +136,8 @@ export async function POST(req: Request) {
           data: {
             quoteNumber,
             userId: session.user.id,
+            // Marker esplicito di preventivo manuale (vedi schema.prisma).
+            kind: "MANUAL",
             // Status "sent": il preventivo manuale è già consegnato fuori app.
             status: "sent",
             sentAt: new Date(),
@@ -193,6 +200,7 @@ export async function POST(req: Request) {
               price: line.amount,
               quantity: 1,
               isMonthly: line.isMonthly,
+              isCustom: true,
               notes: null,
             },
             select: { id: true },

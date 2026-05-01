@@ -56,6 +56,8 @@ async function main() {
     wonAt: null,
     kickoffAt: null,
     closedAt: null,
+    deliveryExpectedAt: null,
+    depositPercent: 30,
     setupBeforeDiscount: 16973,
     discountType: null,
     discountAmount: 0,

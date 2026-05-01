@@ -116,6 +116,70 @@ export async function GET(req: Request) {
     { paid: 0, outstanding: 0 }
   );
 
+  function monthKey(d: Date) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  type Bucket = { scheduledIn: number; scheduledOut: number; paidIn: number; paidOut: number };
+  const seriesMap = new Map<string, Bucket>();
+
+  function bump(month: string, patch: Partial<Bucket>) {
+    const cur: Bucket = seriesMap.get(month) || {
+      scheduledIn: 0,
+      scheduledOut: 0,
+      paidIn: 0,
+      paidOut: 0,
+    };
+    seriesMap.set(month, {
+      scheduledIn: cur.scheduledIn + (patch.scheduledIn || 0),
+      scheduledOut: cur.scheduledOut + (patch.scheduledOut || 0),
+      paidIn: cur.paidIn + (patch.paidIn || 0),
+      paidOut: cur.paidOut + (patch.paidOut || 0),
+    });
+  }
+
+  for (const q of enrichedQuotes) {
+    const ratio =
+      q.effectiveRevenueAnnual > 0
+        ? Math.min(1, Math.max(0, q.effectiveCostAnnual / q.effectiveRevenueAnnual))
+        : 0;
+    for (const p of q.payments || []) {
+      const amt = Number(p.amount || 0);
+      if (!amt) continue;
+      if (p.dueDate) {
+        const k = monthKey(new Date(p.dueDate));
+        bump(k, { scheduledIn: amt, scheduledOut: Math.round(amt * ratio) });
+      }
+      if (p.paidAt) {
+        const k = monthKey(new Date(p.paidAt));
+        bump(k, { paidIn: amt, paidOut: Math.round(amt * ratio) });
+      }
+    }
+  }
+
+  let seriesKeys = [...seriesMap.keys()].sort();
+  if (seriesKeys.length > 48) seriesKeys = seriesKeys.slice(seriesKeys.length - 48);
+
+  const cashflowSeries = seriesKeys.map((month) => {
+    const b = seriesMap.get(month)!;
+    const netScheduled = b.scheduledIn - b.scheduledOut;
+    const netPaid = b.paidIn - b.paidOut;
+    const label = new Date(`${month}-01T12:00:00`).toLocaleDateString("it-IT", {
+      month: "short",
+      year: "numeric",
+    });
+    return {
+      month,
+      label,
+      scheduledIn: b.scheduledIn,
+      scheduledOut: b.scheduledOut,
+      paidIn: b.paidIn,
+      paidOut: b.paidOut,
+      netScheduled,
+      netPaid,
+    };
+  });
+
   return NextResponse.json({
     rangeDays,
     from,
@@ -124,6 +188,7 @@ export async function GET(req: Request) {
     quotes: enrichedQuotes,
     payments,
     cash,
+    cashflowSeries,
   });
 }
 

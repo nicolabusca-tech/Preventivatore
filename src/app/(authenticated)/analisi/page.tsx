@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import CashflowCharts, { type CashflowMonthPoint } from "@/components/CashflowCharts";
 
 type AnalyticsQuote = {
   id: string;
@@ -10,6 +11,8 @@ type AnalyticsQuote = {
   createdAt: string;
   user: { name: string };
   totalAnnual: number;
+  totalSetup: number;
+  totalMonthly: number;
   costAnnual: number;
   marginAnnual: number;
   marginPercentAnnual: number;
@@ -24,6 +27,8 @@ type AnalyticsQuote = {
   wonAt: string | null;
   kickoffAt: string | null;
   closedAt: string | null;
+  deliveryExpectedAt: string | null;
+  depositPercent?: number;
 };
 
 type AnalyticsPayment = {
@@ -36,6 +41,7 @@ type AnalyticsPayment = {
   paidAt: string | null;
   method: string | null;
   notes: string | null;
+  kind: string | null;
   userName: string;
 };
 
@@ -52,6 +58,7 @@ type AnalyticsResponse = {
   quotes: AnalyticsQuote[];
   payments: AnalyticsPayment[];
   cash: { paid: number; outstanding: number };
+  cashflowSeries?: CashflowMonthPoint[];
 };
 
 function formatEuro(value: number) {
@@ -73,6 +80,23 @@ function formatDate(dateStr: string | null) {
   return new Date(dateStr).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function toInputDate(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseInputDateToIso(s: string): string | null {
+  const t = s.trim();
+  if (!t) return null;
+  const [y, m, d] = t.split("-").map((x) => Number(x));
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d, 12, 0, 0, 0).toISOString();
+}
+
 export default function AnalisiPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,6 +113,7 @@ export default function AnalisiPage() {
   const [adjFrequency, setAdjFrequency] = useState<"ONE_TIME" | "MONTH" | "YEAR">("ONE_TIME");
   const [adjAmountEuro, setAdjAmountEuro] = useState<string>("");
   const [adjNotes, setAdjNotes] = useState("");
+  const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -102,7 +127,7 @@ export default function AnalisiPage() {
       })
       .then((payload) => {
         if (!alive) return;
-        setData(payload);
+        setData({ ...payload, cashflowSeries: payload.cashflowSeries ?? [] });
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -172,7 +197,43 @@ export default function AnalisiPage() {
     const res = await fetch(`/api/analytics?range=${range}`);
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new Error(body?.error || "Errore refresh");
-    setData(body as AnalyticsResponse);
+    setData({ ...(body as AnalyticsResponse), cashflowSeries: (body as AnalyticsResponse).cashflowSeries ?? [] });
+  }
+
+  async function generatePaymentPlan(quoteId: string) {
+    const row = document.querySelector(`tr[data-quote-row="${quoteId}"]`);
+    const acq = (row?.querySelector(`input[name="acquisition-${quoteId}"]`) as HTMLInputElement | null)?.value?.trim() || "";
+    const del = (row?.querySelector(`input[name="delivery-${quoteId}"]`) as HTMLInputElement | null)?.value?.trim() || "";
+    const depRaw = (row?.querySelector(`input[name="deposit-${quoteId}"]`) as HTMLInputElement | null)?.value;
+    const depositPercent = Number(depRaw);
+    const dep = Number.isFinite(depositPercent) ? Math.min(100, Math.max(0, Math.round(depositPercent))) : 30;
+
+    const q = data?.quotes.find((x) => x.id === quoteId);
+    const monthly = q?.totalMonthly ?? 0;
+    if (monthly > 0 && !del) {
+      throw new Error("Imposta la data di consegna prevista prima di generare le mensilità.");
+    }
+
+    const paymentCount = data?.payments.filter((p) => p.quoteId === quoteId).length ?? 0;
+    if (paymentCount > 0) {
+      const ok = window.confirm(
+        "Esistono già rate per questo preventivo. Vuoi cancellarle e rigenerare il piano completo?"
+      );
+      if (!ok) return;
+    }
+
+    const res = await fetch(`/api/quotes/${quoteId}/payments/generate-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        acquisitionDate: acq || undefined,
+        deliveryExpectedAt: del || undefined,
+        depositPercent: dep,
+        replaceExisting: true,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.error || "Errore generazione piano pagamenti");
   }
 
   async function addAdjustment(quoteId: string) {
@@ -242,7 +303,7 @@ export default function AnalisiPage() {
         <div>
           <h1 className="text-2xl sm:text-4xl mb-1">Analisi</h1>
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
-            Margini, pipeline e pagamenti (interno).
+            Margini, cassa prevista/incassata e piano pagamenti (interno).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -305,49 +366,19 @@ export default function AnalisiPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card p-5 space-y-2">
-          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--mc-text-secondary)" }}>
-            Pipeline vendita
-          </div>
-          <div className="flex justify-between text-sm">
-            <span style={{ color: "var(--mc-text-secondary)" }}>Open</span>
-            <span className="font-semibold tabular-nums">{data.pipeline.open || 0}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span style={{ color: "var(--mc-text-secondary)" }}>Won</span>
-            <span className="font-semibold tabular-nums">{data.pipeline.won || 0}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span style={{ color: "var(--mc-text-secondary)" }}>Lost</span>
-            <span className="font-semibold tabular-nums">{data.pipeline.lost || 0}</span>
-          </div>
-          <div className="pt-3 mt-3" style={{ borderTop: "1px solid var(--mc-border)" }}>
-            <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--mc-text-secondary)" }}>
-              Delivery (solo won)
-            </div>
-            <div className="flex justify-between text-sm">
-              <span style={{ color: "var(--mc-text-secondary)" }}>Da iniziare</span>
-              <span className="font-semibold tabular-nums">{data.pipeline.not_started || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span style={{ color: "var(--mc-text-secondary)" }}>In corso</span>
-              <span className="font-semibold tabular-nums">{data.pipeline.in_progress || 0}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span style={{ color: "var(--mc-text-secondary)" }}>Completati</span>
-              <span className="font-semibold tabular-nums">{data.pipeline.done || 0}</span>
-            </div>
-          </div>
+      {(data.cashflowSeries ?? []).length > 0 && (
+        <div className="card p-5 overflow-hidden">
+          <CashflowCharts series={data.cashflowSeries ?? []} />
         </div>
+      )}
 
-        <div className="lg:col-span-2 card overflow-hidden">
+      <div className="card overflow-hidden">
           <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--mc-border)" }}>
             <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
               <div>
-                <div className="font-semibold">Preventivi (pipeline)</div>
+                <div className="font-semibold">Preventivi</div>
                 <div className="text-xs mt-0.5" style={{ color: "var(--mc-text-muted)" }}>
-                  Filtra e aggiorna gli stadi senza entrare nell’editor.
+                  Date acquisizione/consegna, acconto sul setup e generazione rate (mensilità dal mese dopo la consegna prevista).
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -390,126 +421,286 @@ export default function AnalisiPage() {
                   <th className="text-right">Margine</th>
                   <th className="text-right">Margine %</th>
                   <th className="text-right">Extra</th>
-                  <th>Acquisito</th>
+                  <th>Acquisizione</th>
+                  <th>Consegna prev.</th>
+                  <th className="text-right">Acconto %</th>
                   <th>Kickoff</th>
+                  <th className="w-24">Piano</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredQuotes.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-sm" style={{ color: "var(--mc-text-muted)" }}>
+                    <td colSpan={13} className="text-sm" style={{ color: "var(--mc-text-muted)" }}>
                       Nessun risultato con i filtri attuali.
                     </td>
                   </tr>
                 ) : (
                   filteredQuotes.map((q) => (
-                  <tr key={q.id}>
-                    <td className="font-mono text-xs">
-                      <a href={`/preventivi/${q.id}`} className="hover:underline" style={{ color: "var(--mc-accent)" }}>
-                        {q.quoteNumber}
-                      </a>
-                    </td>
-                    <td>
-                      <div className="font-semibold text-sm">{q.clientName}</div>
-                      {q.clientCompany && (
-                        <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
-                          {q.clientCompany}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <select
-                        className="input text-xs"
-                        value={q.salesStage || "open"}
-                        disabled={busy}
-                        onChange={async (e) => {
-                          const next = e.target.value;
-                          try {
-                            setBusy(true);
-                            await patchQuote(q.id, {
-                              salesStage: next,
-                              wonAt: next === "won" ? new Date().toISOString() : null,
-                            });
-                            await refresh();
-                          } catch (err: unknown) {
-                            setError(err instanceof Error ? err.message : "Errore inatteso");
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                      >
-                        <option value="open">{stageLabel("open")}</option>
-                        <option value="won">{stageLabel("won")}</option>
-                        <option value="lost">{stageLabel("lost")}</option>
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="input text-xs"
-                        value={q.deliveryStage || "not_started"}
-                        disabled={busy}
-                        onChange={async (e) => {
-                          try {
-                            setBusy(true);
-                            await patchQuote(q.id, { deliveryStage: e.target.value });
-                            await refresh();
-                          } catch (err: unknown) {
-                            setError(err instanceof Error ? err.message : "Errore inatteso");
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                      >
-                        <option value="not_started">{deliveryLabel("not_started")}</option>
-                        <option value="in_progress">{deliveryLabel("in_progress")}</option>
-                        <option value="done">{deliveryLabel("done")}</option>
-                      </select>
-                    </td>
-                    <td className="text-right tabular-nums text-sm">{formatEuro(q.effectiveRevenueAnnual || q.totalAnnual || 0)}</td>
-                    <td
-                      className="text-right tabular-nums text-sm"
-                      title={formatPct(q.effectiveMarginPercentAnnual || q.marginPercentAnnual || 0)}
-                    >
-                      {q.effectiveMarginAnnual ? formatEuro(q.effectiveMarginAnnual) : "—"}
-                    </td>
-                    <td className="text-right tabular-nums text-sm" style={{ color: "var(--mc-text-secondary)" }}>
-                      {formatPct(q.effectiveMarginPercentAnnual || q.marginPercentAnnual || 0)}
-                    </td>
-                    <td className="text-right text-xs tabular-nums" style={{ color: "var(--mc-text-secondary)" }}>
-                      {q.adjustmentsAnnualRevenue || q.adjustmentsAnnualCost ? (
-                        <span title={`Ricavi extra: ${formatEuro(q.adjustmentsAnnualRevenue || 0)} · Costi extra: ${formatEuro(q.adjustmentsAnnualCost || 0)}`}>
-                          {formatEuro((q.adjustmentsAnnualRevenue || 0) - (q.adjustmentsAnnualCost || 0))}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="text-xs">{q.wonAt ? formatDate(q.wonAt) : "—"}</td>
-                    <td className="text-xs">
-                      {q.kickoffAt ? (
-                        formatDate(q.kickoffAt)
-                      ) : (
-                        <button
-                          className="btn-ghost text-xs px-2 py-1"
-                          disabled={busy}
-                          onClick={async () => {
-                            try {
-                              setBusy(true);
-                              await patchQuote(q.id, { kickoffAt: new Date().toISOString(), deliveryStage: "in_progress" });
-                              await refresh();
-                            } catch (err: unknown) {
-                              setError(err instanceof Error ? err.message : "Errore inatteso");
-                            } finally {
-                              setBusy(false);
-                            }
-                          }}
+                    <Fragment key={q.id}>
+                      <tr data-quote-row={q.id}>
+                        <td className="font-mono text-xs">
+                          <a href={`/preventivi/${q.id}`} className="hover:underline" style={{ color: "var(--mc-accent)" }}>
+                            {q.quoteNumber}
+                          </a>
+                        </td>
+                        <td>
+                          <div className="font-semibold text-sm">{q.clientName}</div>
+                          {q.clientCompany && (
+                            <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
+                              {q.clientCompany}
+                            </div>
+                          )}
+                          {(q.totalMonthly ?? 0) > 0 && (
+                            <div className="text-[10px] mt-0.5 tabular-nums" style={{ color: "var(--mc-text-muted)" }}>
+                              Canone {formatEuro(q.totalMonthly || 0)}/mese
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <select
+                            className="input text-xs"
+                            value={q.salesStage || "open"}
+                            disabled={busy}
+                            onChange={async (e) => {
+                              const next = e.target.value;
+                              try {
+                                setBusy(true);
+                                await patchQuote(q.id, {
+                                  salesStage: next,
+                                  wonAt: next === "won" ? new Date().toISOString() : null,
+                                });
+                                await refresh();
+                              } catch (err: unknown) {
+                                setError(err instanceof Error ? err.message : "Errore inatteso");
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          >
+                            <option value="open">{stageLabel("open")}</option>
+                            <option value="won">{stageLabel("won")}</option>
+                            <option value="lost">{stageLabel("lost")}</option>
+                          </select>
+                        </td>
+                        <td>
+                          <select
+                            className="input text-xs"
+                            value={q.deliveryStage || "not_started"}
+                            disabled={busy}
+                            onChange={async (e) => {
+                              try {
+                                setBusy(true);
+                                await patchQuote(q.id, { deliveryStage: e.target.value });
+                                await refresh();
+                              } catch (err: unknown) {
+                                setError(err instanceof Error ? err.message : "Errore inatteso");
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          >
+                            <option value="not_started">{deliveryLabel("not_started")}</option>
+                            <option value="in_progress">{deliveryLabel("in_progress")}</option>
+                            <option value="done">{deliveryLabel("done")}</option>
+                          </select>
+                        </td>
+                        <td className="text-right tabular-nums text-sm">{formatEuro(q.effectiveRevenueAnnual || q.totalAnnual || 0)}</td>
+                        <td
+                          className="text-right tabular-nums text-sm"
+                          title={formatPct(q.effectiveMarginPercentAnnual || q.marginPercentAnnual || 0)}
                         >
-                          Imposta oggi
-                        </button>
+                          {q.effectiveMarginAnnual ? formatEuro(q.effectiveMarginAnnual) : "—"}
+                        </td>
+                        <td className="text-right tabular-nums text-sm" style={{ color: "var(--mc-text-secondary)" }}>
+                          {formatPct(q.effectiveMarginPercentAnnual || q.marginPercentAnnual || 0)}
+                        </td>
+                        <td className="text-right text-xs tabular-nums" style={{ color: "var(--mc-text-secondary)" }}>
+                          {q.adjustmentsAnnualRevenue || q.adjustmentsAnnualCost ? (
+                            <span title={`Ricavi extra: ${formatEuro(q.adjustmentsAnnualRevenue || 0)} · Costi extra: ${formatEuro(q.adjustmentsAnnualCost || 0)}`}>
+                              {formatEuro((q.adjustmentsAnnualRevenue || 0) - (q.adjustmentsAnnualCost || 0))}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="align-top whitespace-nowrap">
+                          <input
+                            type="date"
+                            className="input text-xs min-w-[9rem]"
+                            name={`acquisition-${q.id}`}
+                            defaultValue={toInputDate(q.wonAt)}
+                            key={`${q.id}-won-${q.wonAt || "empty"}`}
+                            disabled={busy}
+                            title="Data acquisizione (firma / dovrebbe pagare)"
+                            onBlur={async (e) => {
+                              try {
+                                setBusy(true);
+                                await patchQuote(q.id, { wonAt: parseInputDateToIso(e.target.value) });
+                                await refresh();
+                              } catch (err: unknown) {
+                                setError(err instanceof Error ? err.message : "Errore inatteso");
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          />
+                        </td>
+                        <td className="align-top whitespace-nowrap">
+                          <input
+                            type="date"
+                            className="input text-xs min-w-[9rem]"
+                            name={`delivery-${q.id}`}
+                            defaultValue={toInputDate(q.deliveryExpectedAt)}
+                            key={`${q.id}-del-${q.deliveryExpectedAt || "empty"}`}
+                            disabled={busy}
+                            title="Fine progetto / go-live: le mensilità partono dal mese successivo"
+                            onBlur={async (e) => {
+                              try {
+                                setBusy(true);
+                                await patchQuote(q.id, { deliveryExpectedAt: parseInputDateToIso(e.target.value) });
+                                await refresh();
+                              } catch (err: unknown) {
+                                setError(err instanceof Error ? err.message : "Errore inatteso");
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          />
+                        </td>
+                        <td className="align-top text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            className="input text-xs w-[4.25rem] inline-block text-right tabular-nums"
+                            name={`deposit-${q.id}`}
+                            defaultValue={q.depositPercent ?? 30}
+                            key={`${q.id}-dep-${q.depositPercent ?? 30}`}
+                            disabled={busy}
+                            title="Acconto sul solo setup (listino netto voucher/sconti)"
+                            onBlur={async (e) => {
+                              const v = Math.min(100, Math.max(0, Math.round(Number(e.target.value))));
+                              try {
+                                setBusy(true);
+                                await patchQuote(q.id, { depositPercent: v });
+                                await refresh();
+                              } catch (err: unknown) {
+                                setError(err instanceof Error ? err.message : "Errore inatteso");
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          />
+                        </td>
+                        <td className="text-xs whitespace-nowrap">
+                          {q.kickoffAt ? (
+                            formatDate(q.kickoffAt)
+                          ) : (
+                            <button
+                              className="btn-ghost text-xs px-2 py-1"
+                              disabled={busy}
+                              onClick={async () => {
+                                try {
+                                  setBusy(true);
+                                  await patchQuote(q.id, { kickoffAt: new Date().toISOString(), deliveryStage: "in_progress" });
+                                  await refresh();
+                                } catch (err: unknown) {
+                                  setError(err instanceof Error ? err.message : "Errore inatteso");
+                                } finally {
+                                  setBusy(false);
+                                }
+                              }}
+                            >
+                              Oggi
+                            </button>
+                          )}
+                        </td>
+                        <td className="text-xs whitespace-nowrap">
+                          <button
+                            type="button"
+                            className="btn-ghost text-xs px-2 py-1"
+                            disabled={busy}
+                            onClick={() => setExpandedQuoteId(expandedQuoteId === q.id ? null : q.id)}
+                          >
+                            {expandedQuoteId === q.id ? "Chiudi" : "Rate"}
+                          </button>
+                        </td>
+                      </tr>
+                      {expandedQuoteId === q.id && (
+                        <tr className="bg-opacity-50" style={{ background: "var(--mc-bg-soft, rgba(0,0,0,0.03))" }}>
+                          <td colSpan={13} className="p-4 align-top">
+                            <div className="flex flex-wrap gap-3 items-center mb-4">
+                              <button
+                                type="button"
+                                className="btn-secondary text-xs px-3 py-2"
+                                disabled={busy}
+                                onClick={async () => {
+                                  try {
+                                    setBusy(true);
+                                    await generatePaymentPlan(q.id);
+                                    await refresh();
+                                  } catch (err: unknown) {
+                                    setError(err instanceof Error ? err.message : "Errore inatteso");
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                              >
+                                Genera piano pagamenti
+                              </button>
+                              <span className="text-xs max-w-xl" style={{ color: "var(--mc-text-muted)" }}>
+                                Acconto sul setup, anticipi annuali canoni alla data acquisizione, 12 mensilità da{" "}
+                                <strong>mese dopo la consegna prevista</strong>.
+                              </span>
+                            </div>
+                            <div className="overflow-x-auto rounded-lg" style={{ border: "1px solid var(--mc-border)" }}>
+                              <table className="mc-table text-xs">
+                                <thead>
+                                  <tr>
+                                    <th>Scadenza</th>
+                                    <th className="text-right">Importo</th>
+                                    <th>Stato</th>
+                                    <th>Tipo</th>
+                                    <th>Note</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(() => {
+                                    const planPayments = [...(data.payments || [])]
+                                      .filter((p) => p.quoteId === q.id)
+                                      .sort((a, b) => {
+                                        const ad = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+                                        const bd = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+                                        return ad - bd;
+                                      });
+                                    if (planPayments.length === 0) {
+                                      return (
+                                        <tr>
+                                          <td colSpan={5} style={{ color: "var(--mc-text-muted)" }}>
+                                            Nessuna rata. Imposta date e premi «Genera piano pagamenti».
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+                                    return planPayments.map((p) => (
+                                      <tr key={p.id}>
+                                        <td className="tabular-nums">{p.dueDate ? formatDate(p.dueDate) : "—"}</td>
+                                        <td className="text-right font-semibold tabular-nums">{formatEuro(p.amount)}</td>
+                                        <td>{p.paidAt ? `Pagato ${formatDate(p.paidAt)}` : "Aperto"}</td>
+                                        <td className="font-mono text-[10px]">{p.kind || "—"}</td>
+                                        <td style={{ color: "var(--mc-text-secondary)" }}>{p.notes || "—"}</td>
+                                      </tr>
+                                    ));
+                                  })()}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                ))
+                    </Fragment>
+                  ))
                 )}
               </tbody>
             </table>
@@ -589,7 +780,6 @@ export default function AnalisiPage() {
               <input className="input" value={adjNotes} onChange={(e) => setAdjNotes(e.target.value)} placeholder="Note interne..." />
             </div>
           </div>
-        </div>
       </div>
 
       <div className="card overflow-hidden">
@@ -609,13 +799,14 @@ export default function AnalisiPage() {
                 <th>Scadenza</th>
                 <th className="text-right">Importo</th>
                 <th>Note</th>
+                <th className="text-xs">Tipo</th>
                 <th className="w-24"></th>
               </tr>
             </thead>
             <tbody>
               {unpaidPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-sm" style={{ color: "var(--mc-text-muted)" }}>
+                  <td colSpan={8} className="text-sm" style={{ color: "var(--mc-text-muted)" }}>
                     Nessun pagamento aperto.
                   </td>
                 </tr>
@@ -643,6 +834,9 @@ export default function AnalisiPage() {
                       <td className="text-right font-semibold tabular-nums">{formatEuro(p.amount)}</td>
                       <td className="text-xs" style={{ color: "var(--mc-text-secondary)" }}>
                         {p.notes || "—"}
+                      </td>
+                      <td className="text-[10px] font-mono" style={{ color: "var(--mc-text-muted)" }}>
+                        {p.kind || "—"}
                       </td>
                       <td className="text-right">
                         <button

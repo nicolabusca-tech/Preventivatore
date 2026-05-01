@@ -53,6 +53,8 @@ const quote = {
   wonAt: null,
   kickoffAt: null,
   closedAt: null,
+  deliveryExpectedAt: null,
+  depositPercent: 30,
   setupBeforeDiscount: 20779,
   discountType: null,
   discountAmount: 0,

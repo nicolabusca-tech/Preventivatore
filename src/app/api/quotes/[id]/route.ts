@@ -310,6 +310,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         wonAt: data.wonAt !== undefined ? (data.wonAt ? new Date(data.wonAt) : null) : quote.wonAt,
         kickoffAt: data.kickoffAt !== undefined ? (data.kickoffAt ? new Date(data.kickoffAt) : null) : quote.kickoffAt,
         closedAt: data.closedAt !== undefined ? (data.closedAt ? new Date(data.closedAt) : null) : quote.closedAt,
+        deliveryExpectedAt:
+          data.deliveryExpectedAt !== undefined
+            ? data.deliveryExpectedAt
+              ? new Date(String(data.deliveryExpectedAt))
+              : null
+            : quote.deliveryExpectedAt,
+        depositPercent:
+          data.depositPercent !== undefined
+            ? Math.min(100, Math.max(0, Math.round(Number(data.depositPercent))))
+            : quote.depositPercent,
       },
       include: {
         user: { select: { name: true, email: true } },

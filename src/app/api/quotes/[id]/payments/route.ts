@@ -56,6 +56,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       paidAt: data?.paidAt ? new Date(String(data.paidAt)) : null,
       method: data?.method ? String(data.method) : null,
       notes: data?.notes ? String(data.notes) : null,
+      kind: data?.kind != null && String(data.kind).trim() ? String(data.kind) : null,
     },
   });
   return NextResponse.json(created);
@@ -98,6 +99,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       paidAt: body?.paidAt !== undefined ? (body.paidAt ? new Date(String(body.paidAt)) : null) : undefined,
       method: body?.method !== undefined ? (body.method ? String(body.method) : null) : undefined,
       notes: body?.notes !== undefined ? (body.notes ? String(body.notes) : null) : undefined,
+      kind:
+        body?.kind !== undefined
+          ? body.kind && String(body.kind).trim()
+            ? String(body.kind)
+            : null
+          : undefined,
     },
   });
   return NextResponse.json(updated);

@@ -317,6 +317,30 @@ h1 {
   box-shadow: 0 0 0 3px var(--mc-accent-ring);
 }
 
+/* Righe toolbar / filtri: senza w-full così restano su una riga in flex */
+.input-row {
+  @apply px-3 py-2 rounded-lg text-sm transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed;
+  width: auto;
+  min-width: 0;
+  background: var(--mc-bg-elevated);
+  color: var(--mc-text);
+  border: 1px solid var(--mc-border);
+}
+
+.input-row::placeholder {
+  color: var(--mc-text-muted);
+}
+
+.input-row:hover:not(:disabled):not(:focus) {
+  border-color: var(--mc-border-strong);
+}
+
+.input-row:focus {
+  outline: none;
+  border-color: var(--mc-accent);
+  box-shadow: 0 0 0 3px var(--mc-accent-ring);
+}
+
 textarea.input {
   resize: vertical;
   min-height: 80px;
@@ -443,6 +467,23 @@ textarea.input {
 }
 .mc-table thead th:last-child {
   border-top-right-radius: 11px;
+}
+
+/* Header sticky sotto navbar (h-14 = 3.5rem); richiede che il contenitore card non usi overflow-hidden */
+.mc-table.mc-table-sticky-head thead th {
+  position: sticky;
+  top: 3.5rem;
+  z-index: 30;
+  background: var(--mc-bg-inset);
+  box-shadow: 0 1px 0 var(--mc-border);
+}
+
+.mc-table.mc-table-sticky-head thead th:first-child {
+  border-top-left-radius: 0;
+}
+
+.mc-table.mc-table-sticky-head thead th:last-child {
+  border-top-right-radius: 0;
 }
 
 .mc-table tbody tr {

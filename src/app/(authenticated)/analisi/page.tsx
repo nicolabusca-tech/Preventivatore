@@ -299,22 +299,22 @@ export default function AnalisiPage() {
 
   return (
     <div className="animate-fade-in space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 xl:flex-row xl:flex-nowrap xl:items-end xl:justify-between">
+        <div className="min-w-0 shrink-0">
           <h1 className="text-2xl sm:text-4xl mb-1">Analisi</h1>
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
             Margini, cassa prevista/incassata e piano pagamenti (interno).
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <select className="input text-sm" value={range} onChange={(e) => setRange(e.target.value as any)}>
+        <div className="flex flex-row flex-nowrap items-center gap-2 shrink-0 overflow-x-auto pb-0.5">
+          <select className="input-row w-[11rem] shrink-0" value={range} onChange={(e) => setRange(e.target.value as any)}>
             <option value="30d">Ultimi 30 giorni</option>
             <option value="90d">Ultimi 90 giorni</option>
             <option value="180d">Ultimi 180 giorni</option>
             <option value="365d">Ultimi 365 giorni</option>
           </select>
           <button
-            className="btn-ghost"
+            className="btn-ghost shrink-0"
             disabled={busy}
             onClick={async () => {
               try {
@@ -372,35 +372,38 @@ export default function AnalisiPage() {
         </div>
       )}
 
-      <div className="card overflow-hidden">
+      <div className="card">
           <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--mc-border)" }}>
-            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-              <div>
+            <div className="flex flex-col gap-3 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between lg:gap-6">
+              <div className="min-w-0 shrink-0 lg:max-w-xl">
                 <div className="font-semibold">Preventivi</div>
-                <div className="text-xs mt-0.5" style={{ color: "var(--mc-text-muted)" }}>
+                <div className="text-xs mt-0.5 leading-snug" style={{ color: "var(--mc-text-muted)" }}>
                   Date acquisizione/consegna, acconto sul setup e generazione rate (mensilità dal mese dopo la consegna prevista).
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-row flex-nowrap items-center gap-2 min-w-0 flex-1 lg:justify-end overflow-x-auto pb-0.5 [scrollbar-gutter:stable]">
                 <input
-                  className="input text-sm"
+                  type="search"
+                  className="input-row flex-1 min-w-[12rem] max-w-xl basis-[min(100%,24rem)]"
                   value={tableQuery}
                   onChange={(e) => setTableQuery(e.target.value)}
-                  placeholder="Cerca numero / cliente / azienda / commerciale…"
+                  placeholder="Cerca numero / cliente / commerciale…"
+                  autoComplete="off"
+                  aria-label="Cerca in tabella"
                 />
-                <select className="input text-sm" value={salesFilter} onChange={(e) => setSalesFilter(e.target.value as any)} title="Filtro vendita">
+                <select className="input-row w-[10.5rem] shrink-0" value={salesFilter} onChange={(e) => setSalesFilter(e.target.value as any)} title="Filtro vendita">
                   <option value="all">Vendita: tutte</option>
                   <option value="open">Vendita: in trattativa</option>
                   <option value="won">Vendita: acquisito</option>
                   <option value="lost">Vendita: perso</option>
                 </select>
-                <select className="input text-sm" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as any)} title="Filtro delivery">
+                <select className="input-row w-[10.5rem] shrink-0" value={deliveryFilter} onChange={(e) => setDeliveryFilter(e.target.value as any)} title="Filtro delivery">
                   <option value="all">Delivery: tutte</option>
                   <option value="not_started">Delivery: da iniziare</option>
                   <option value="in_progress">Delivery: in corso</option>
                   <option value="done">Delivery: completato</option>
                 </select>
-                <select className="input text-sm" value={rowLimit} onChange={(e) => setRowLimit((e.target.value as any) === "all" ? "all" : Number(e.target.value) as any)} title="Righe tabella">
+                <select className="input-row w-[7.5rem] shrink-0" value={rowLimit} onChange={(e) => setRowLimit((e.target.value as any) === "all" ? "all" : Number(e.target.value) as any)} title="Righe tabella">
                   <option value={40}>40 righe</option>
                   <option value={100}>100 righe</option>
                   <option value={200}>200 righe</option>
@@ -410,7 +413,7 @@ export default function AnalisiPage() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="mc-table">
+            <table className="mc-table mc-table-sticky-head">
               <thead>
                 <tr>
                   <th>Numero</th>
@@ -782,7 +785,7 @@ export default function AnalisiPage() {
           </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="card">
         <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--mc-border)" }}>
           <div className="font-semibold">Pagamenti (rate aperte)</div>
           <div className="text-xs mt-0.5" style={{ color: "var(--mc-text-muted)" }}>
@@ -790,7 +793,7 @@ export default function AnalisiPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="mc-table">
+          <table className="mc-table mc-table-sticky-head">
             <thead>
               <tr>
                 <th>Preventivo</th>

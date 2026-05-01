@@ -11,11 +11,7 @@ import {
   type RoiFormInputs,
 } from "@/lib/roi";
 import { CrmCustomerSearch, type CrmCustomer } from "@/components/CrmCustomerSearch";
-import {
-  applicaCodiceManuale,
-  canonePrepayFromMonthly,
-  computeCreditoMetodoCantiere,
-} from "@/lib/discounts";
+import { computePricing, type PricingInput } from "@/lib/pricing/engine";
 
 type Product = {
   id: string;
@@ -360,97 +356,44 @@ export function QuoteEditor({ initial }: Props) {
     }
   }
 
-  const baseTotals = useMemo(() => {
-    let setupModules = 0;
-    let monthly = 0;
-    let crmMonthly = 0;
-    let aiMonthly = 0;
-    let waMonthly = 0;
-    const setupBreakdown: { name: string; lineTotal: number; quantity: number; code: string }[] = [];
-    const monthlyBreakdown: { name: string; lineTotal: number; quantity: number; code: string }[] = [];
-
-    for (const [code, qty] of selected.entries()) {
-      if (code === DIAGNOSI_CODE || code === AUDIT_LAMPO_CODE) continue;
-      const p = products.find((x) => x.code === code);
-      if (!p) continue;
-      const itemTotal = p.price * qty;
-      if (p.isMonthly) {
-        monthly += itemTotal;
-        if (p.block === "CANONI_CRM") crmMonthly += itemTotal;
-        if (p.block === "CANONI_AIVOCALE") aiMonthly += itemTotal;
-        if (p.block === "CANONI_WA") waMonthly += itemTotal;
-        const esclusoDallaRicorrenzaMensile =
-          (p.block === "CANONI_CRM" && scontoCrmAnnuale) ||
-          (p.block === "CANONI_AIVOCALE" && scontoAiVocaleAnnuale) ||
-          (p.block === "CANONI_WA" && scontoWaAnnuale);
-        if (!esclusoDallaRicorrenzaMensile) {
-          monthlyBreakdown.push({
-            name: p.name,
-            lineTotal: itemTotal,
-            quantity: qty,
-            code: p.code,
-          });
-        }
-      } else {
-        setupModules += itemTotal;
-        setupBreakdown.push({
-          name: p.name,
-          lineTotal: itemTotal,
-          quantity: qty,
-          code: p.code,
-        });
-      }
-    }
-
-    const setupGross = setupModules;
-    let setup = setupGross;
-    if (diagnosiGiaPagata) {
-      setup = Math.max(0, setup - DIAGNOSI_VOUCHER_AMOUNT);
-    }
-    if (voucherAuditApplied) {
-      setup = Math.max(0, setup - AUDIT_VOUCHER_AMOUNT);
-    }
-
-    const crmPrepayBreakdown =
-      scontoCrmAnnuale && crmMonthly > 0 ? canonePrepayFromMonthly(crmMonthly, "CRM") : null;
-    const aiPrepayBreakdown =
-      scontoAiVocaleAnnuale && aiMonthly > 0 ? canonePrepayFromMonthly(aiMonthly, "AIVOCALE") : null;
-    const waPrepayBreakdown =
-      scontoWaAnnuale && waMonthly > 0 ? canonePrepayFromMonthly(waMonthly, "WA") : null;
-
-    const prepaidCrm = crmPrepayBreakdown?.netOneTime ?? 0;
-    const prepaidAi = aiPrepayBreakdown?.netOneTime ?? 0;
-    const prepaidWa = waPrepayBreakdown?.netOneTime ?? 0;
-
-    const monthlyAfterPrepay =
-      monthly -
-      (scontoCrmAnnuale ? crmMonthly : 0) -
-      (scontoAiVocaleAnnuale ? aiMonthly : 0) -
-      (scontoWaAnnuale ? waMonthly : 0);
-
-    const oneTimeTotal = setup + prepaidCrm + prepaidAi + prepaidWa;
-    const annualTotal = oneTimeTotal + monthlyAfterPrepay * 12;
-
-    return {
-      setupModules,
-      setupGross,
-      setup,
-      setupBreakdown,
-      monthlyBreakdown,
-      monthly,
-      crmMonthly,
-      aiMonthly,
-      waMonthly,
-      monthlyAfterPrepay,
-      oneTimeTotal,
-      annualTotal,
-      prepaidCrm,
-      prepaidAi,
-      prepaidWa,
-      crmPrepayBreakdown,
-      aiPrepayBreakdown,
-      waPrepayBreakdown,
+  // Tutto il calcolo prezzi/sconti/credito MC vive in un unico posto:
+  // src/lib/pricing/engine.ts (puro, senza IO). Lo shape dell'output replica
+  // i campi che il JSX qui sotto consuma da `totals.*`, quindi nessun
+  // cambio di rendering. Vedi commenti nell'engine per le costanti business.
+  const totals = useMemo(() => {
+    const items = Array.from(selected.entries()).map(([productCode, quantity]) => ({
+      productCode,
+      quantity,
+    }));
+    const input: PricingInput = {
+      catalog: products.map((p) => ({
+        code: p.code,
+        name: p.name,
+        block: p.block,
+        price: p.price,
+        isMonthly: p.isMonthly,
+      })),
+      items,
+      diagnosiGiaPagata,
+      voucherAuditApplied,
+      prepayments: {
+        CRM: scontoCrmAnnuale,
+        AIVOCALE: scontoAiVocaleAnnuale,
+        WA: scontoWaAnnuale,
+      },
+      manualDiscount: manualDiscount
+        ? {
+            code: manualDiscount.code,
+            percent: manualDiscount.discountPercent,
+            fixedAmount:
+              manualDiscount.discountAmount > 0 ? manualDiscount.discountAmount : undefined,
+          }
+        : null,
+      legacyDiscountType: initial?.discountType ?? null,
+      legacyDiscountAmount: initial?.discountAmount ?? null,
+      legacyDiscountPercent: initial?.discountPercent ?? null,
     };
+    return computePricing(input);
   }, [
     products,
     selected,
@@ -459,80 +402,7 @@ export function QuoteEditor({ initial }: Props) {
     scontoAiVocaleAnnuale,
     scontoCrmAnnuale,
     scontoWaAnnuale,
-  ]);
-
-  const totals = useMemo(() => {
-    const setupAfterVoucher = baseTotals.setup;
-
-    const manualRes = manualDiscount
-      ? applicaCodiceManuale(
-          setupAfterVoucher,
-          manualDiscount.discountPercent,
-          manualDiscount.code,
-          manualDiscount.discountAmount > 0 ? { fixedAmount: manualDiscount.discountAmount } : undefined
-        )
-      : null;
-
-    const chosen = manualRes
-      ? {
-          discountType: "manual" as const,
-          discountCode: manualDiscount!.code,
-          discountPercent: manualDiscount!.discountPercent,
-          discountAmount: manualRes.amount,
-          discountLabel: manualRes.label,
-        }
-      : {
-          discountType: null as string | null,
-          discountCode: null as string | null,
-          discountPercent: 0,
-          discountAmount: 0,
-          discountLabel: "" as string,
-        };
-
-    const setupNet = Math.max(0, setupAfterVoucher - chosen.discountAmount);
-    const oneTimeTotal = setupNet + baseTotals.prepaidCrm + baseTotals.prepaidAi + baseTotals.prepaidWa;
-    const annualTotal = oneTimeTotal + baseTotals.monthlyAfterPrepay * 12;
-
-    const discountTypeForCredito = manualDiscount
-      ? chosen.discountType
-      : chosen.discountType ??
-        (initial?.discountType === "volume_5" || initial?.discountType === "volume_10"
-          ? initial.discountType
-          : null);
-    const discountAmountForCredito = manualDiscount
-      ? chosen.discountAmount
-      : chosen.discountAmount || Number(initial?.discountAmount || 0);
-    const discountPercentForCredito = manualDiscount
-      ? chosen.discountPercent
-      : chosen.discountPercent || Number(initial?.discountPercent || 0);
-
-    const creditoMetodoCantiere = computeCreditoMetodoCantiere({
-      setupBeforeDiscount: baseTotals.setupGross,
-      diagnosiGiaPagata,
-      voucherAuditApplied,
-      discountType: discountTypeForCredito,
-      discountAmount: discountAmountForCredito,
-      discountPercent: discountPercentForCredito,
-    });
-
-    return {
-      ...baseTotals,
-      setupAfterVoucher,
-      setupNet,
-      oneTimeTotal,
-      annualTotal,
-      discountType: chosen.discountType,
-      discountCode: chosen.discountCode,
-      discountPercent: chosen.discountPercent,
-      discountAmount: chosen.discountAmount,
-      discountLabel: chosen.discountLabel,
-      creditoMetodoCantiere,
-    };
-  }, [
-    baseTotals,
     manualDiscount,
-    diagnosiGiaPagata,
-    voucherAuditApplied,
     initial?.discountType,
     initial?.discountAmount,
     initial?.discountPercent,

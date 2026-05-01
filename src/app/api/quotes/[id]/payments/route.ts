@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { toQuotePaymentJson } from "@/lib/quotes/serialize-nested";
 import { assertCsrf } from "@/lib/security/csrf";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -21,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     where: { quoteId: params.id },
     orderBy: [{ paidAt: "asc" }, { dueDate: "asc" }, { createdAt: "asc" }],
   });
-  return NextResponse.json(payments);
+  return NextResponse.json(payments.map(toQuotePaymentJson));
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -59,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       kind: data?.kind != null && String(data.kind).trim() ? String(data.kind) : null,
     },
   });
-  return NextResponse.json(created);
+  return NextResponse.json(toQuotePaymentJson(created));
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -107,7 +108,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           : undefined,
     },
   });
-  return NextResponse.json(updated);
+  return NextResponse.json(toQuotePaymentJson(updated));
 }
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {

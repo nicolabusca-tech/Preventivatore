@@ -8,6 +8,8 @@ import {
   buildDefaultPaymentPlan,
   paymentRowsToCreateMany,
 } from "@/lib/quote-payment-plan";
+import { toQuotePaymentJson } from "@/lib/quotes/serialize-nested";
+import type { GeneratePlanResponseJson } from "@/lib/types/quote-nested";
 
 type Scope = "all" | "monthly";
 
@@ -20,9 +22,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "CSRF" }, { status: 403 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const scope: Scope = body?.scope === "monthly" ? "monthly" : "all";
-  const replaceExisting = body?.replaceExisting !== false;
+  const payload = await req.json().catch(() => ({}));
+  const scope: Scope = payload?.scope === "monthly" ? "monthly" : "all";
+  const replaceExisting = payload?.replaceExisting !== false;
 
   const quote = await prisma.quote.findUnique({
     where: { id: params.id },
@@ -41,21 +43,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const productsByCode = new Map(products.map((p) => [p.code, p]));
 
   const explicitAcquisition =
-    body?.acquisitionDate != null && String(body.acquisitionDate).trim().length > 0;
+    payload?.acquisitionDate != null && String(payload.acquisitionDate).trim().length > 0;
   const acquisitionDate = explicitAcquisition
-    ? new Date(String(body.acquisitionDate))
+    ? new Date(String(payload.acquisitionDate))
     : quote.wonAt ?? new Date();
 
   const deliveryExpectedAt: Date | null =
-    body?.deliveryExpectedAt !== undefined
-      ? String(body.deliveryExpectedAt || "").trim()
-        ? new Date(String(body.deliveryExpectedAt))
+    payload?.deliveryExpectedAt !== undefined
+      ? String(payload.deliveryExpectedAt || "").trim()
+        ? new Date(String(payload.deliveryExpectedAt))
         : null
       : quote.deliveryExpectedAt;
 
   const depositPercent =
-    body?.depositPercent !== undefined
-      ? Math.min(100, Math.max(0, Math.round(Number(body.depositPercent))))
+    payload?.depositPercent !== undefined
+      ? Math.min(100, Math.max(0, Math.round(Number(payload.depositPercent))))
       : quote.depositPercent;
 
   if (scope === "monthly") {
@@ -125,5 +127,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     });
   });
 
-  return NextResponse.json({ payments: created, plannedCount: rows.length, scope });
+  const responseBody: GeneratePlanResponseJson = {
+    payments: created.map(toQuotePaymentJson),
+    plannedCount: rows.length,
+    scope,
+  };
+  return NextResponse.json(responseBody);
 }

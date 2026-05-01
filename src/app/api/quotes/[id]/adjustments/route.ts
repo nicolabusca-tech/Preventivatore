@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { toQuoteAdjustmentJson } from "@/lib/quotes/serialize-nested";
 import { assertCsrf } from "@/lib/security/csrf";
 
 function normalizeKind(raw: unknown) {
@@ -33,7 +34,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     where: { quoteId: quote.id },
     orderBy: [{ createdAt: "asc" }],
   });
-  return NextResponse.json(rows);
+  return NextResponse.json(rows.map(toQuoteAdjustmentJson));
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -79,7 +80,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     },
   });
 
-  return NextResponse.json(created);
+  return NextResponse.json(toQuoteAdjustmentJson(created));
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -127,7 +128,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     },
   });
 
-  return NextResponse.json(updated);
+  return NextResponse.json(toQuoteAdjustmentJson(updated));
 }
 
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {

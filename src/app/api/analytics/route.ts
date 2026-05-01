@@ -1,7 +1,88 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import type {
+  AnalyticsPaymentRow,
+  AnalyticsPipeline,
+  AnalyticsQuote,
+  AnalyticsResponse,
+  AnalyticsSummary,
+  AcquiredCumulativePoint,
+} from "@/lib/types/analytics";
+
+const analyticsInclude = {
+  user: { select: { name: true } },
+  payments: true,
+  adjustments: true,
+} as const satisfies Prisma.QuoteInclude;
+
+type QuoteDb = Prisma.QuoteGetPayload<{ include: typeof analyticsInclude }>;
+
+type EnrichedQuote = QuoteDb & {
+  effectiveRevenueAnnual: number;
+  effectiveCostAnnual: number;
+  effectiveMarginAnnual: number;
+  effectiveMarginPercentAnnual: number;
+  adjustmentsAnnualRevenue: number;
+  adjustmentsAnnualCost: number;
+};
+
+function adjustmentToAnnual(a: QuoteDb["adjustments"][number]): { revenue: number; cost: number } {
+  const amt = Number(a.amount || 0);
+  const kind = String(a.kind || "").toLowerCase();
+  const freq = String(a.frequency || "ONE_TIME").toUpperCase();
+  const annual = freq === "MONTH" ? amt * 12 : amt;
+  if (kind === "revenue") return { revenue: annual, cost: 0 };
+  if (kind === "cost") return { revenue: 0, cost: annual };
+  return { revenue: 0, cost: 0 };
+}
+
+function toAnalyticsQuote(q: EnrichedQuote): AnalyticsQuote {
+  return {
+    id: q.id,
+    quoteNumber: q.quoteNumber,
+    clientName: q.clientName,
+    clientCompany: q.clientCompany,
+    createdAt: q.createdAt.toISOString(),
+    user: { name: q.user.name },
+    totalSetup: q.totalSetup,
+    totalMonthly: q.totalMonthly,
+    totalAnnual: q.totalAnnual,
+    costAnnual: q.costAnnual,
+    effectiveRevenueAnnual: q.effectiveRevenueAnnual,
+    effectiveCostAnnual: q.effectiveCostAnnual,
+    effectiveMarginAnnual: q.effectiveMarginAnnual,
+    effectiveMarginPercentAnnual: q.effectiveMarginPercentAnnual,
+    adjustmentsAnnualRevenue: q.adjustmentsAnnualRevenue,
+    adjustmentsAnnualCost: q.adjustmentsAnnualCost,
+    salesStage: q.salesStage,
+    deliveryStage: q.deliveryStage,
+    wonAt: q.wonAt ? q.wonAt.toISOString() : null,
+    deliveryExpectedAt: q.deliveryExpectedAt ? q.deliveryExpectedAt.toISOString() : null,
+    depositPercent: q.depositPercent,
+  };
+}
+
+function toAnalyticsPaymentRow(
+  q: EnrichedQuote,
+  p: QuoteDb["payments"][number]
+): AnalyticsPaymentRow {
+  return {
+    id: p.id,
+    amount: p.amount,
+    dueDate: p.dueDate ? p.dueDate.toISOString() : null,
+    paidAt: p.paidAt ? p.paidAt.toISOString() : null,
+    notes: p.notes,
+    kind: p.kind,
+    quoteId: q.id,
+    quoteNumber: q.quoteNumber,
+    clientName: q.clientName,
+    userName: q.user.name,
+    method: p.method ?? null,
+  };
+}
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -22,34 +103,20 @@ export async function GET(req: Request) {
   })();
   const from = new Date(now - rangeDays * 24 * 60 * 60 * 1000);
 
-  const where: any = {
+  const where: Prisma.QuoteWhereInput = {
     createdAt: { gte: from },
   };
   if (!isAdmin) where.userId = userId;
 
   const quotes = await prisma.quote.findMany({
     where,
-    include: {
-      user: { select: { name: true } },
-      payments: true,
-      adjustments: true,
-    },
+    include: analyticsInclude,
     orderBy: { createdAt: "desc" },
   });
 
-  function adjustmentToAnnual(a: any): { revenue: number; cost: number } {
-    const amt = Number(a?.amount || 0);
-    const kind = String(a?.kind || "").toLowerCase();
-    const freq = String(a?.frequency || "ONE_TIME").toUpperCase();
-    const annual = freq === "MONTH" ? amt * 12 : amt;
-    if (kind === "revenue") return { revenue: annual, cost: 0 };
-    if (kind === "cost") return { revenue: 0, cost: annual };
-    return { revenue: 0, cost: 0 };
-  }
-
-  const enrichedQuotes = quotes.map((q: any) => {
-    const adj = (q.adjustments || []).reduce(
-      (acc: any, a: any) => {
+  const enrichedQuotes: EnrichedQuote[] = quotes.map((q) => {
+    const adj = q.adjustments.reduce(
+      (acc, a) => {
         const r = adjustmentToAnnual(a);
         acc.revenue += r.revenue;
         acc.cost += r.cost;
@@ -75,8 +142,8 @@ export async function GET(req: Request) {
     };
   });
 
-  const summary = enrichedQuotes.reduce(
-    (acc, q: any) => {
+  const summary: AnalyticsSummary = enrichedQuotes.reduce(
+    (acc, q) => {
       acc.count += 1;
       acc.revenueAnnual += q.effectiveRevenueAnnual || 0;
       acc.costAnnual += q.effectiveCostAnnual || 0;
@@ -88,27 +155,23 @@ export async function GET(req: Request) {
     { count: 0, wonCount: 0, lostCount: 0, revenueAnnual: 0, costAnnual: 0, marginAnnual: 0 }
   );
 
-  const pipeline = {
-    open: enrichedQuotes.filter((q: any) => q.salesStage === "open").length,
-    won: enrichedQuotes.filter((q: any) => q.salesStage === "won").length,
-    lost: enrichedQuotes.filter((q: any) => q.salesStage === "lost").length,
-    not_started: enrichedQuotes.filter((q: any) => q.deliveryStage === "not_started" && q.salesStage === "won").length,
-    in_progress: enrichedQuotes.filter((q: any) => q.deliveryStage === "in_progress" && q.salesStage === "won").length,
-    done: enrichedQuotes.filter((q: any) => q.deliveryStage === "done" && q.salesStage === "won").length,
+  const pipeline: AnalyticsPipeline = {
+    open: enrichedQuotes.filter((q) => q.salesStage === "open").length,
+    won: enrichedQuotes.filter((q) => q.salesStage === "won").length,
+    lost: enrichedQuotes.filter((q) => q.salesStage === "lost").length,
+    not_started: enrichedQuotes.filter((q) => q.deliveryStage === "not_started" && q.salesStage === "won")
+      .length,
+    in_progress: enrichedQuotes.filter((q) => q.deliveryStage === "in_progress" && q.salesStage === "won")
+      .length,
+    done: enrichedQuotes.filter((q) => q.deliveryStage === "done" && q.salesStage === "won").length,
   };
 
-  const payments = enrichedQuotes.flatMap((q: any) =>
-    (q.payments || []).map((p: any) => ({
-      ...p,
-      quoteId: q.id,
-      quoteNumber: q.quoteNumber,
-      clientName: q.clientName,
-      userName: q.user?.name || "",
-    }))
+  const flatPayments: AnalyticsPaymentRow[] = enrichedQuotes.flatMap((q) =>
+    q.payments.map((p) => toAnalyticsPaymentRow(q, p))
   );
 
-  const cash = payments.reduce(
-    (acc, p: any) => {
+  const cash = flatPayments.reduce(
+    (acc, p) => {
       if (p.paidAt) acc.paid += p.amount || 0;
       else acc.outstanding += p.amount || 0;
       return acc;
@@ -120,8 +183,6 @@ export async function GET(req: Request) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }
 
-  // Serie cumulativa: sommatoria dei preventivi acquisiti (won) per mese di wonAt.
-  // Per ciascun preventivo prendiamo il "valore 1° anno" = totalSetup + (effective)totalAnnual.
   const acquiredByMonth = new Map<string, number>();
   let earliestWon: Date | null = null;
 
@@ -144,7 +205,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const acquiredCumulative: Array<{ month: string; label: string; monthValue: number; cumulative: number }> = [];
+  const acquiredCumulative: AcquiredCumulativePoint[] = [];
   if (acquiredByMonth.size > 0) {
     const start = earliestWon ? new Date(earliestWon) : new Date(from);
     const end = new Date();
@@ -162,15 +223,18 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({
+  const quotesJson: AnalyticsQuote[] = enrichedQuotes.map(toAnalyticsQuote);
+
+  const body: AnalyticsResponse = {
     rangeDays,
-    from,
+    from: from.toISOString(),
     summary,
     pipeline,
-    quotes: enrichedQuotes,
-    payments,
+    quotes: quotesJson,
+    payments: flatPayments,
     cash,
     acquiredCumulative,
-  });
-}
+  };
 
+  return NextResponse.json(body);
+}

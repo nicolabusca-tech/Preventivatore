@@ -70,5 +70,5 @@ export type AnalyticsResponse = {
   quotes: AnalyticsQuote[];
   payments: AnalyticsPaymentRow[];
   cash: { paid: number; outstanding: number };
-  acquiredCumulative?: AcquiredCumulativePoint[];
+  acquiredCumulative: AcquiredCumulativePoint[];
 };

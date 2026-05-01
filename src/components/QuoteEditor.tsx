@@ -9,6 +9,7 @@ import {
   computeDiagnosiShareValue,
   mergeRoiDefaults,
   type RoiFormInputs,
+  type RoiSnapshotPayload,
 } from "@/lib/roi";
 import { CrmCustomerSearch, type CrmCustomer } from "@/components/CrmCustomerSearch";
 import { computePricing, type PricingInput } from "@/lib/pricing/engine";
@@ -370,6 +371,24 @@ export function QuoteEditor({ initial }: Props) {
   ]);
 
   const roiLive = useMemo(() => {
+    // Senza alcuna voce dal listino non ha senso mostrare baseline/conversione/contratti:
+    // sarebbero solo ipotesi da Impostazioni ROI, non legate al preventivo corrente.
+    if (selected.size === 0) {
+      const payload: RoiSnapshotPayload = {
+        inputs: { ...roiInputs },
+        fatturatoAnnuoBaseline: 0,
+        margineAnnuoBaseline: 0,
+        valoreFatturatoProposta: 0,
+        margineStimatoProposta: 0,
+        valoreQuotaDiagnosi: 0,
+        indice: null,
+        investimentoOrizzonteMesi: 12,
+        diagnosiPesoTotale: 0,
+        conversioneAttesa: 0,
+      };
+      return { snapshot: JSON.stringify(payload), payload };
+    }
+
     const hasDce = DCE_ALLOWED_CODES.some((c) => selected.has(c));
     const investimentoOrizzonteMesi = hasDce ? 6 : 12;
 
@@ -399,6 +418,10 @@ export function QuoteEditor({ initial }: Props) {
   }, [products, roiInputs, selected, totals.monthlyAfterPrepay, totals.oneTimeTotal]);
 
   const roiExplain = useMemo(() => {
+    if (selected.size === 0) {
+      return { peso: 0, convAttesa: 0 };
+    }
+
     const selectedForRoi = Array.from(selected.entries())
       .map(([code, quantity]) => {
         const p = products.find((x) => x.code === code);
@@ -416,6 +439,17 @@ export function QuoteEditor({ initial }: Props) {
   }, [products, roiInputs, selected]);
 
   const roiQuick = useMemo(() => {
+    if (selected.size === 0) {
+      return {
+        investimento: 0,
+        deltaMargine: 0,
+        paybackMesi: null as number | null,
+        preventiviAnnui: (roiInputs.preventiviMese || 0) * 12,
+        contrattiAttuali: 0,
+        contrattiAttesi: 0,
+      };
+    }
+
     const payload = roiLive.payload;
     const investimento = payload.valoreFatturatoProposta;
     const deltaMargine = payload.margineStimatoProposta - payload.margineAnnuoBaseline;
@@ -437,7 +471,13 @@ export function QuoteEditor({ initial }: Props) {
       contrattiAttuali,
       contrattiAttesi,
     };
-  }, [roiExplain.convAttesa, roiInputs.conversioneAttuale, roiInputs.preventiviMese, roiLive.payload]);
+  }, [
+    selected.size,
+    roiExplain.convAttesa,
+    roiInputs.conversioneAttuale,
+    roiInputs.preventiviMese,
+    roiLive.payload,
+  ]);
 
   const paybackLabel = useMemo(() => {
     const v = roiQuick.paybackMesi;
@@ -1411,6 +1451,11 @@ export function QuoteEditor({ initial }: Props) {
 
           <div className="card-muted p-4">
             <div className="text-xs font-bold uppercase tracking-wider mb-2">ROI (live)</div>
+            {selected.size === 0 && (
+              <p className="text-[11px] leading-snug mb-2" style={{ color: "var(--mc-text-muted)" }}>
+                Seleziona almeno una voce dal listino per calcolare conversione, margini e contratti sul preventivo.
+              </p>
+            )}
             <div className="space-y-1 text-sm">
               <div className="flex justify-between gap-2">
                 <span style={{ color: "var(--mc-text-secondary)" }}>Peso ROI totale</span>

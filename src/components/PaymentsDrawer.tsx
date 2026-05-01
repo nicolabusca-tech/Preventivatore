@@ -130,6 +130,16 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
     };
   }, [payments]);
 
+  const totals = useMemo(() => {
+    let outstanding = 0;
+    let paid = 0;
+    for (const p of payments) {
+      if (p.paidAt) paid += p.amount || 0;
+      else outstanding += p.amount || 0;
+    }
+    return { outstanding, paid };
+  }, [payments]);
+
   if (!open || !quote) return null;
 
   async function patchQuote(payload: Record<string, unknown>) {
@@ -252,16 +262,6 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
       setBusy(false);
     }
   }
-
-  const totals = useMemo(() => {
-    let outstanding = 0;
-    let paid = 0;
-    for (const p of payments) {
-      if (p.paidAt) paid += p.amount || 0;
-      else outstanding += p.amount || 0;
-    }
-    return { outstanding, paid };
-  }, [payments]);
 
   return (
     <div className="fixed inset-0 z-50 flex">

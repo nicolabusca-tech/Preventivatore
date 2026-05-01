@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { computeCreditoMetodoCantiere } from "@/lib/discounts";
+import { computeCredito } from "@/lib/pricing/engine";
 import { parseRoiSnapshot } from "@/lib/roi";
 import { QuoteEditor, type QuoteEditorInitialData } from "@/components/QuoteEditor";
 import { deriveFase, getFaseOption, faseToneStyle } from "@/lib/fase";
@@ -301,13 +301,13 @@ export default function DettaglioPreventivoPage() {
     quote.setupBeforeDiscount > 0
       ? quote.setupBeforeDiscount
       : setupLineItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const creditoMetodoCantiere = computeCreditoMetodoCantiere({
-    setupBeforeDiscount: grossSetupForCredito,
+  const creditoMetodoCantiere = computeCredito({
+    setupGross: grossSetupForCredito,
     diagnosiGiaPagata: quote.diagnosiGiaPagata,
     voucherAuditApplied: quote.voucherAuditApplied,
-    discountType: quote.discountType,
-    discountAmount: quote.discountAmount,
-    discountPercent: quote.discountPercent,
+    manualDiscountAmount: quote.discountAmount,
+    manualDiscountPercent: quote.discountPercent,
+    legacyDiscountType: quote.discountType,
   });
 
   const fase = deriveFase(quote);

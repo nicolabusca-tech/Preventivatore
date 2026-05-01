@@ -1,5 +1,5 @@
 import { Quote, QuoteItem, User } from "@prisma/client";
-import { canonePrepayFromMonthly, computeCreditoMetodoCantiere } from "@/lib/discounts";
+import { prepayFromMonthly, computeCredito } from "@/lib/pricing/engine";
 import { parseRoiSnapshot } from "@/lib/roi";
 import {
   addDays,
@@ -99,13 +99,13 @@ function computeSetupTotals(quote: QuoteWithRelations) {
   if (totalSetup < 0) totalSetup = 0;
 
   const grossSetupModuli = Math.max(0, Math.round(Number(quote.setupBeforeDiscount) || 0));
-  const creditoMetodoCantiere = computeCreditoMetodoCantiere({
-    setupBeforeDiscount: grossSetupModuli > 0 ? grossSetupModuli : Math.max(0, setupBefore),
+  const creditoMetodoCantiere = computeCredito({
+    setupGross: grossSetupModuli > 0 ? grossSetupModuli : Math.max(0, setupBefore),
     diagnosiGiaPagata: !!quote.diagnosiGiaPagata,
     voucherAuditApplied: !!quote.voucherAuditApplied,
-    discountType: quote.discountType,
-    discountAmount: quote.discountAmount,
-    discountPercent: quote.discountPercent,
+    manualDiscountAmount: quote.discountAmount,
+    manualDiscountPercent: quote.discountPercent,
+    legacyDiscountType: quote.discountType,
   });
 
   return {
@@ -699,14 +699,14 @@ function renderPage6(quote: QuoteWithRelations) {
 
   const crmPrepay =
     !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0
-      ? canonePrepayFromMonthly(crmMonthlyFromItems, "CRM")
+      ? prepayFromMonthly(crmMonthlyFromItems, "CRM")
       : null;
   const aiPrepay =
     !!quote.scontoAiVocaleAnnuale && aiMonthlyFromItems > 0
-      ? canonePrepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
+      ? prepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
       : null;
   const waPrepay =
-    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? canonePrepayFromMonthly(waMonthlyFromItems, "WA") : null;
+    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? prepayFromMonthly(waMonthlyFromItems, "WA") : null;
 
   const crmAnticipatoHtml = crmPrepay
     ? pdfCanoneAnticipatoRows({
@@ -1022,14 +1022,14 @@ function renderPage9Payments(quote: QuoteWithRelations) {
 
   const crmPrepay =
     !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0
-      ? canonePrepayFromMonthly(crmMonthlyFromItems, "CRM")
+      ? prepayFromMonthly(crmMonthlyFromItems, "CRM")
       : null;
   const aiPrepay =
     !!quote.scontoAiVocaleAnnuale && aiMonthlyFromItems > 0
-      ? canonePrepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
+      ? prepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
       : null;
   const waPrepay =
-    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? canonePrepayFromMonthly(waMonthlyFromItems, "WA") : null;
+    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? prepayFromMonthly(waMonthlyFromItems, "WA") : null;
 
   const canoniAnticipatiAllaFirma =
     (crmPrepay?.netOneTime ?? 0) + (aiPrepay?.netOneTime ?? 0) + (waPrepay?.netOneTime ?? 0);

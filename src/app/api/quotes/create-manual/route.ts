@@ -22,7 +22,7 @@ import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
 // "MANUAL_" per mantenere unicità a livello di item all'interno del preventivo.
 // La detection a livello di preventivo/voce non si basa più su questo prefix
 // ma sui campi espliciti `Quote.kind` e `QuoteItem.isCustom`.
-export const MANUAL_PRODUCT_CODE_PREFIX = "MANUAL_";
+const MANUAL_PRODUCT_CODE_PREFIX = "MANUAL_";
 
 type IncomingLine = {
   description?: unknown;

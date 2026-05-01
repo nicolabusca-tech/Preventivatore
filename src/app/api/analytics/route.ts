@@ -120,65 +120,47 @@ export async function GET(req: Request) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }
 
-  type Bucket = { scheduledIn: number; scheduledOut: number; paidIn: number; paidOut: number };
-  const seriesMap = new Map<string, Bucket>();
-
-  function bump(month: string, patch: Partial<Bucket>) {
-    const cur: Bucket = seriesMap.get(month) || {
-      scheduledIn: 0,
-      scheduledOut: 0,
-      paidIn: 0,
-      paidOut: 0,
-    };
-    seriesMap.set(month, {
-      scheduledIn: cur.scheduledIn + (patch.scheduledIn || 0),
-      scheduledOut: cur.scheduledOut + (patch.scheduledOut || 0),
-      paidIn: cur.paidIn + (patch.paidIn || 0),
-      paidOut: cur.paidOut + (patch.paidOut || 0),
-    });
-  }
+  // Serie cumulativa: sommatoria dei preventivi acquisiti (won) per mese di wonAt.
+  // Per ciascun preventivo prendiamo il "valore 1° anno" = totalSetup + (effective)totalAnnual.
+  const acquiredByMonth = new Map<string, number>();
+  let earliestWon: Date | null = null;
 
   for (const q of enrichedQuotes) {
-    const ratio =
-      q.effectiveRevenueAnnual > 0
-        ? Math.min(1, Math.max(0, q.effectiveCostAnnual / q.effectiveRevenueAnnual))
-        : 0;
-    for (const p of q.payments || []) {
-      const amt = Number(p.amount || 0);
-      if (!amt) continue;
-      if (p.dueDate) {
-        const k = monthKey(new Date(p.dueDate));
-        bump(k, { scheduledIn: amt, scheduledOut: Math.round(amt * ratio) });
-      }
-      if (p.paidAt) {
-        const k = monthKey(new Date(p.paidAt));
-        bump(k, { paidIn: amt, paidOut: Math.round(amt * ratio) });
-      }
+    if (q.salesStage !== "won" || !q.wonAt) continue;
+    const d = new Date(q.wonAt);
+    if (Number.isNaN(d.getTime())) continue;
+    if (!earliestWon || d < earliestWon) earliestWon = d;
+    const value = (q.totalSetup || 0) + (q.effectiveRevenueAnnual || q.totalAnnual || 0);
+    const k = monthKey(d);
+    acquiredByMonth.set(k, (acquiredByMonth.get(k) || 0) + value);
+  }
+
+  function* monthRange(start: Date, end: Date) {
+    const a = new Date(start.getFullYear(), start.getMonth(), 1, 12);
+    const b = new Date(end.getFullYear(), end.getMonth(), 1, 12);
+    while (a.getTime() <= b.getTime()) {
+      yield new Date(a);
+      a.setMonth(a.getMonth() + 1);
     }
   }
 
-  let seriesKeys = [...seriesMap.keys()].sort();
-  if (seriesKeys.length > 48) seriesKeys = seriesKeys.slice(seriesKeys.length - 48);
-
-  const cashflowSeries = seriesKeys.map((month) => {
-    const b = seriesMap.get(month)!;
-    const netScheduled = b.scheduledIn - b.scheduledOut;
-    const netPaid = b.paidIn - b.paidOut;
-    const label = new Date(`${month}-01T12:00:00`).toLocaleDateString("it-IT", {
-      month: "short",
-      year: "numeric",
-    });
-    return {
-      month,
-      label,
-      scheduledIn: b.scheduledIn,
-      scheduledOut: b.scheduledOut,
-      paidIn: b.paidIn,
-      paidOut: b.paidOut,
-      netScheduled,
-      netPaid,
-    };
-  });
+  const acquiredCumulative: Array<{ month: string; label: string; monthValue: number; cumulative: number }> = [];
+  if (acquiredByMonth.size > 0) {
+    const start = earliestWon ? new Date(earliestWon) : new Date(from);
+    const end = new Date();
+    let running = 0;
+    for (const m of monthRange(start, end)) {
+      const k = monthKey(m);
+      const inc = acquiredByMonth.get(k) || 0;
+      running += inc;
+      acquiredCumulative.push({
+        month: k,
+        label: m.toLocaleDateString("it-IT", { month: "short", year: "numeric" }),
+        monthValue: inc,
+        cumulative: running,
+      });
+    }
+  }
 
   return NextResponse.json({
     rangeDays,
@@ -188,7 +170,7 @@ export async function GET(req: Request) {
     quotes: enrichedQuotes,
     payments,
     cash,
-    cashflowSeries,
+    acquiredCumulative,
   });
 }
 

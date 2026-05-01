@@ -3,7 +3,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { assertCsrf } from "@/lib/security/csrf";
-import { buildDefaultPaymentPlan, paymentRowsToCreateMany } from "@/lib/quote-payment-plan";
+import {
+  PAYMENT_KIND,
+  buildDefaultPaymentPlan,
+  paymentRowsToCreateMany,
+} from "@/lib/quote-payment-plan";
+
+type Scope = "all" | "monthly";
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -15,6 +21,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const body = await req.json().catch(() => ({}));
+  const scope: Scope = body?.scope === "monthly" ? "monthly" : "all";
   const replaceExisting = body?.replaceExisting !== false;
 
   const quote = await prisma.quote.findUnique({
@@ -39,7 +46,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ? new Date(String(body.acquisitionDate))
     : quote.wonAt ?? new Date();
 
-  let deliveryExpectedAt: Date | null =
+  const deliveryExpectedAt: Date | null =
     body?.deliveryExpectedAt !== undefined
       ? String(body.deliveryExpectedAt || "").trim()
         ? new Date(String(body.deliveryExpectedAt))
@@ -51,7 +58,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       ? Math.min(100, Math.max(0, Math.round(Number(body.depositPercent))))
       : quote.depositPercent;
 
-  if (quote.totalMonthly > 0 && !deliveryExpectedAt) {
+  if (scope === "monthly") {
+    if (quote.totalMonthly <= 0) {
+      return NextResponse.json(
+        { error: "Questo preventivo non prevede canoni mensili." },
+        { status: 400 }
+      );
+    }
+    if (!deliveryExpectedAt) {
+      return NextResponse.json(
+        { error: "Imposta la data di consegna prevista per generare le mensilità canone." },
+        { status: 400 }
+      );
+    }
+  } else if (quote.totalMonthly > 0 && !deliveryExpectedAt) {
     return NextResponse.json(
       { error: "Imposta la data di consegna prevista per generare le mensilità canone." },
       { status: 400 }
@@ -60,7 +80,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const deliveryForPlan = deliveryExpectedAt ?? acquisitionDate;
 
-  const rows = buildDefaultPaymentPlan({
+  const fullRows = buildDefaultPaymentPlan({
     quote: { ...quote, depositPercent },
     items: quote.items,
     productsByCode,
@@ -68,6 +88,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     deliveryExpectedAt: deliveryForPlan,
     depositPercent,
   });
+
+  const rows =
+    scope === "monthly"
+      ? fullRows.filter((r) => r.kind === PAYMENT_KIND.MONTHLY_CANONE)
+      : fullRows;
 
   const created = await prisma.$transaction(async (tx) => {
     await tx.quote.update({
@@ -79,8 +104,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       },
     });
 
-    if (replaceExisting) {
+    if (scope === "all" && replaceExisting) {
       await tx.quotePayment.deleteMany({ where: { quoteId: quote.id } });
+    }
+    if (scope === "monthly") {
+      // Sostituisce solo le mensilità canone, lascia intatti acconto/setup/prepay e rate manuali
+      await tx.quotePayment.deleteMany({
+        where: { quoteId: quote.id, kind: PAYMENT_KIND.MONTHLY_CANONE },
+      });
     }
 
     const data = paymentRowsToCreateMany(quote.id, rows);
@@ -94,5 +125,5 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     });
   });
 
-  return NextResponse.json({ payments: created, plannedCount: rows.length });
+  return NextResponse.json({ payments: created, plannedCount: rows.length, scope });
 }

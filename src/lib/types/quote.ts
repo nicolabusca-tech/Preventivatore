@@ -38,6 +38,8 @@ export type QuoteEditorInitialData = {
   notes: string | null;
   expiresAt: string | null;
   voucherAuditApplied: boolean;
+  /** STANDARD | MANUAL — se MANUAL, niente PDF da editor listino. */
+  kind?: string;
   scontoCrmAnnuale: boolean;
   scontoAiVocaleAnnuale: boolean;
   scontoWaAnnuale: boolean;

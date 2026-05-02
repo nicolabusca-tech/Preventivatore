@@ -156,6 +156,7 @@ export default function DettaglioPreventivoPage() {
     const initial: QuoteEditorInitialData = {
       id: quote.id,
       status: quote.status,
+      kind: quote.kind,
       clientName: quote.clientName,
       clientCompany: quote.clientCompany,
       clientEmail: quote.clientEmail,
@@ -221,7 +222,7 @@ export default function DettaglioPreventivoPage() {
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
             {quote.status === "pending"
               ? "Record in stato legacy “pending”: editabile e inviabile come bozza."
-              : "Tutto editabile finché resta in bozza."}
+              : "Tutto editabile finché resta in bozza. Puoi stampare il PDF dopo il primo salvataggio."}
           </p>
         </div>
 
@@ -343,7 +344,10 @@ export default function DettaglioPreventivoPage() {
                 type="button"
                 className="btn-primary text-sm"
                 onClick={async () => {
-                  const ok = window.confirm("Duplicare questo preventivo come nuova bozza?");
+                  const y = new Date().getFullYear();
+                  const ok = window.confirm(
+                    `Duplicare come nuova bozza? Verrà creato un altro preventivo con un nuovo numero (progressivo Q${y}-####); questo resta invariato.`
+                  );
                   if (!ok) return;
                   const res = await fetch("/api/quotes/duplicate", {
                     method: "POST",
@@ -383,8 +387,9 @@ export default function DettaglioPreventivoPage() {
       {bannerText && (
         <div className="mb-5 alert alert-success">
           <span className="text-sm font-semibold">{bannerText}</span>
-          <span className="text-xs" style={{ opacity: 0.9 }}>
-            Questo preventivo è in sola lettura.
+          <span className="text-xs block mt-1" style={{ opacity: 0.9 }}>
+            In sola lettura: voci e importi non si modificano qui. Duplica per creare una bozza con le modifiche richieste
+            dal cliente.
           </span>
         </div>
       )}

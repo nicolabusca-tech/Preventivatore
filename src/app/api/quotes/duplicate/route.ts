@@ -42,6 +42,8 @@ export async function POST(req: Request) {
 
   const year = new Date().getFullYear();
   const prefix = `Q${year}-`;
+  // Il numero è sempre nuovo (progressivo nell’anno), mai una copia del source — anche se il
+  // preventivo originale era già inviato.
 
   const defaultExpiry = new Date();
   defaultExpiry.setDate(defaultExpiry.getDate() + 30);
@@ -94,9 +96,16 @@ export async function POST(req: Request) {
           scontoAiVocaleAnnuale: source.scontoAiVocaleAnnuale,
           scontoWaAnnuale: source.scontoWaAnnuale,
           voucherAuditApplied: source.voucherAuditApplied,
+          kind: source.kind,
           status: "draft",
           sentAt: null,
           viewedAt: null,
+          publicPdfToken: null,
+          salesStage: "open",
+          deliveryStage: "not_started",
+          wonAt: null,
+          kickoffAt: null,
+          closedAt: null,
           expiresAt: source.expiresAt ?? defaultExpiry,
           notes: source.notes,
           items: {
@@ -106,11 +115,12 @@ export async function POST(req: Request) {
               price: it.price,
               quantity: it.quantity,
               isMonthly: it.isMonthly,
+              isCustom: it.isCustom,
               notes: it.notes,
             })),
           },
-          },
-          include: { items: true },
+        },
+        include: { items: true },
         });
 
         const productCodes = createdQuote.items.map((it) => it.productCode);

@@ -52,6 +52,15 @@ function formatPct(value: number) {
   return `${value.toFixed(1)}%`;
 }
 
+/** Bozza = modificabile nel compositore; inviato = solo lettura nel dettaglio, duplica per varianti. */
+function quoteStatoInfo(status: string): { label: string; isDraft: boolean } {
+  const s = (status || "").toLowerCase();
+  if (s === "draft" || s === "pending") return { label: "Bozza", isDraft: true };
+  if (s === "sent") return { label: "Inviato", isDraft: false };
+  if (s === "viewed") return { label: "Inviato · visto", isDraft: false };
+  return { label: status || "—", isDraft: false };
+}
+
 export default function PreventiviPage() {
   const { data: session } = useSession();
   const router = useRouter();
@@ -187,6 +196,37 @@ export default function PreventiviPage() {
           new CustomEvent("mc:quote-updated", { detail: { id: quoteId } })
         );
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Errore inatteso");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function duplicateQuote(quoteId: string) {
+    const y = new Date().getFullYear();
+    const ok = window.confirm(
+      "Creare una nuova bozza uguale a questo preventivo? Le voci e gli importi saranno copiati; " +
+        `il nuovo avrà il prossimo numero progressivo (formato Q${y}-####), diverso dall’originale, e sarà di nuovo in Bozza.`
+    );
+    if (!ok) return;
+    setBusyId(quoteId);
+    setError(null);
+    try {
+      const res = await fetch("/api/quotes/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quoteId }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(typeof body?.error === "string" ? body.error : `Errore duplicazione (HTTP ${res.status}).`);
+      }
+      if (body && typeof body.id === "string") {
+        router.push(`/preventivi/${body.id}`);
+        return;
+      }
+      throw new Error("Risposta duplicazione non valida.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore inatteso");
     } finally {
@@ -463,6 +503,7 @@ export default function PreventiviPage() {
                   <th>Numero</th>
                   <th>Cliente</th>
                   {isAdmin && <th>Commerciale</th>}
+                  <th className="whitespace-nowrap">Stato</th>
                   <th>Creato</th>
                   <th>Scadenza</th>
                   <th className="text-right">Setup</th>
@@ -471,6 +512,7 @@ export default function PreventiviPage() {
                   <th className="text-right">Costo 1° anno</th>
                   <th className="text-right">Margine 1° anno</th>
                   <th>Fase</th>
+                  <th className="text-center w-24 text-xs font-semibold">Duplica</th>
                   <th className="text-center w-12 text-xs font-semibold" title="Scarica PDF">
                     PDF
                   </th>
@@ -488,6 +530,7 @@ export default function PreventiviPage() {
                     fase === "in_trattativa" && days != null && days <= 7 && days >= 0;
                   const rowBusy = busyId === q.id;
                   const isManualQuote = q.kind === "MANUAL";
+                  const stato = quoteStatoInfo(q.status);
                   return (
                     <tr
                       key={q.id}
@@ -495,7 +538,7 @@ export default function PreventiviPage() {
                         // Evita di aprire il dettaglio se il click arriva dal select fase
                         // o dal suo wrapper "fase-cell".
                         const target = e.target as HTMLElement;
-                        if (target.closest("[data-fase-cell],[data-pdf-cell]")) return;
+                        if (target.closest("[data-fase-cell],[data-pdf-cell],[data-dup-cell]")) return;
                         window.location.href = `/preventivi/${q.id}`;
                       }}
                       style={{ cursor: "pointer" }}
@@ -520,6 +563,28 @@ export default function PreventiviPage() {
                         )}
                       </td>
                       {isAdmin && <td className="text-sm">{q.user.name}</td>}
+                      <td className="text-sm align-top">
+                        <span
+                          className="inline-block text-xs font-semibold px-2 py-0.5 rounded"
+                          style={{
+                            background: stato.isDraft ? "var(--mc-bg-elevated)" : "rgba(255,106,0,0.12)",
+                            color: stato.isDraft ? "var(--mc-text-secondary)" : "#FF6A00",
+                            border: `1px solid ${
+                              stato.isDraft ? "var(--mc-border)" : "rgba(255,106,0,0.35)"
+                            }`,
+                          }}
+                        >
+                          {stato.label}
+                        </span>
+                        {!stato.isDraft && (
+                          <div
+                            className="text-[10px] mt-1 leading-tight max-w-[9rem]"
+                            style={{ color: "var(--mc-text-muted)" }}
+                          >
+                            Non modificabile · usa Duplica per una bozza
+                          </div>
+                        )}
+                      </td>
                       <td className="text-sm" style={{ color: "var(--mc-text-secondary)" }}>
                         {formatDate(q.createdAt)}
                       </td>
@@ -573,6 +638,32 @@ export default function PreventiviPage() {
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td
+                        className="text-center align-middle"
+                        data-dup-cell
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {!stato.isDraft ? (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold px-2 py-1 rounded-md transition-colors"
+                            style={{
+                              background: "var(--mc-bg-elevated)",
+                              border: "1px solid var(--mc-border)",
+                              color: "var(--mc-text)",
+                            }}
+                            disabled={rowBusy}
+                            title="Apri una nuova bozza copia di questo preventivo"
+                            onClick={() => void duplicateQuote(q.id)}
+                          >
+                            Duplica
+                          </button>
+                        ) : (
+                          <span className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
+                            —
+                          </span>
+                        )}
                       </td>
                       <td
                         className="text-center"

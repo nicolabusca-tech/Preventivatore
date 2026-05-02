@@ -12,6 +12,7 @@ import {
   type RoiSnapshotPayload,
 } from "@/lib/roi";
 import { CrmCustomerSearch, type CrmCustomer } from "@/components/CrmCustomerSearch";
+import { ClienteForm } from "@/components/quote-editor/ClienteForm";
 import { computePricing, type PricingInput } from "@/lib/pricing/engine";
 import type { QuoteEditorInitialData } from "@/lib/types/quote";
 
@@ -804,163 +805,46 @@ export function QuoteEditor({ initial }: Props) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-5">
-        <div className="card p-5 sm:p-6">
-          <h2 className="text-2xl mb-4">Cliente</h2>
-
-          <div className="mb-4">
-            <div className="label">Importa dal CRM (opzionale)</div>
-            <CrmCustomerSearch
-              onSelect={(c: CrmCustomer) => {
-                setCrmCustomerId(c.crmId || null);
-                setClientName(c.fullName || `${c.firstName} ${c.lastName}`.trim());
-                setClientCompany(c.company || "");
-                setClientEmail(c.email || "");
-                setClientPhone(c.phone || "");
-                setClientAddress(c.address || "");
-                setClientPostalCode(c.postalCode || "");
-                setClientCity(c.city || "");
-                setClientProvince(c.province || "");
-                setClientVat(c.vat || "");
-                setClientSdi(c.sdi || "");
-              }}
-            />
-
-            {crmCustomerId && (
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="badge badge-accent">
-                  <span className="badge-dot" />
-                  CRM #{crmCustomerId}
-                </span>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs"
-                  onClick={() => setCrmCustomerId(null)}
-                >
-                  Rimuovi collegamento CRM
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label">
-                Nome referente <span style={{ color: "var(--mc-accent)" }}>*</span>
-              </label>
-              <input
-                type="text"
-                className="input"
-                value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                placeholder="Mario Rossi"
-                autoFocus={!initial}
-              />
-            </div>
-            <div>
-              <label className="label">Ragione sociale</label>
-              <input
-                type="text"
-                className="input"
-                value={clientCompany}
-                onChange={(e) => setClientCompany(e.target.value)}
-                placeholder="Edilizia Rossi Srl"
-              />
-            </div>
-
-            <div>
-              <label className="label">Email cliente</label>
-              <input
-                type="email"
-                className="input"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="mario@esempio.it"
-              />
-            </div>
-            <div>
-              <label className="label">Telefono cliente</label>
-              <input
-                type="tel"
-                className="input"
-                value={clientPhone}
-                onChange={(e) => setClientPhone(e.target.value)}
-                placeholder="+39 333 1234567"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="label">Note cliente</label>
-              <textarea
-                rows={2}
-                className="input"
-                value={clientNotes}
-                onChange={(e) => setClientNotes(e.target.value)}
-                placeholder="Contesto, esigenze emerse in call..."
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="label">Indirizzo</label>
-              <input
-                type="text"
-                className="input"
-                value={clientAddress}
-                onChange={(e) => setClientAddress(e.target.value)}
-                placeholder="Via e numero civico"
-              />
-            </div>
-            <div>
-              <label className="label">CAP</label>
-              <input
-                type="text"
-                className="input"
-                value={clientPostalCode}
-                onChange={(e) => setClientPostalCode(e.target.value)}
-                placeholder="00000"
-              />
-            </div>
-            <div>
-              <label className="label">Città</label>
-              <input
-                type="text"
-                className="input"
-                value={clientCity}
-                onChange={(e) => setClientCity(e.target.value)}
-                placeholder="Comune"
-              />
-            </div>
-            <div>
-              <label className="label">Provincia</label>
-              <input
-                type="text"
-                className="input"
-                value={clientProvince}
-                onChange={(e) => setClientProvince(e.target.value.toUpperCase())}
-                placeholder="BG"
-              />
-            </div>
-            <div>
-              <label className="label">Partita IVA</label>
-              <input
-                type="text"
-                className="input font-mono"
-                value={clientVat}
-                onChange={(e) => setClientVat(e.target.value)}
-                placeholder="IT..."
-              />
-            </div>
-            <div>
-              <label className="label">Codice SDI</label>
-              <input
-                type="text"
-                className="input font-mono"
-                value={clientSdi}
-                onChange={(e) => setClientSdi(e.target.value.toUpperCase())}
-                placeholder="XXXXXXX"
-              />
-            </div>
-          </div>
-        </div>
+        <ClienteForm
+          clientName={clientName}
+          setClientName={setClientName}
+          clientCompany={clientCompany}
+          setClientCompany={setClientCompany}
+          clientEmail={clientEmail}
+          setClientEmail={setClientEmail}
+          clientPhone={clientPhone}
+          setClientPhone={setClientPhone}
+          clientNotes={clientNotes}
+          setClientNotes={setClientNotes}
+          clientAddress={clientAddress}
+          setClientAddress={setClientAddress}
+          clientPostalCode={clientPostalCode}
+          setClientPostalCode={setClientPostalCode}
+          clientCity={clientCity}
+          setClientCity={setClientCity}
+          clientProvince={clientProvince}
+          setClientProvince={setClientProvince}
+          clientVat={clientVat}
+          setClientVat={setClientVat}
+          clientSdi={clientSdi}
+          setClientSdi={setClientSdi}
+          crmCustomerId={crmCustomerId}
+          setCrmCustomerId={setCrmCustomerId}
+          onCrmSelect={(c) => {
+            setCrmCustomerId(c.crmId || null);
+            setClientName(c.fullName || `${c.firstName} ${c.lastName}`.trim());
+            setClientCompany(c.company || "");
+            setClientEmail(c.email || "");
+            setClientPhone(c.phone || "");
+            setClientAddress(c.address || "");
+            setClientPostalCode(c.postalCode || "");
+            setClientCity(c.city || "");
+            setClientProvince(c.province || "");
+            setClientVat(c.vat || "");
+            setClientSdi(c.sdi || "");
+          }}
+          onClearCrm={() => setCrmCustomerId(null)}
+        />
 
         <div className="card p-5 sm:p-6">
           <h2 className="text-2xl mb-4">Diagnosi &amp; ROI (prima della proposta)</h2>

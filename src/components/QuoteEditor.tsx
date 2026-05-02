@@ -142,6 +142,13 @@ export function QuoteEditor({ initial }: Props) {
         map.set(it.productCode, 1);
       }
     }
+    // I voucher Diagnosi/Audit sono salvati come flag su Quote (non come QuoteItem,
+    // perchè rappresentano un credito già versato dal cliente, non una voce comprata).
+    // L'API /api/quotes/create li toglie dagli items prima di persistere. Senza queste
+    // due righe, al re-open del preventivo la spunta sparirebbe e il commerciale
+    // perderebbe il voucher di -497€ / -147€ senza accorgersene.
+    if (initial?.diagnosiGiaPagata) map.set(DIAGNOSI_CODE, 1);
+    if (initial?.voucherAuditApplied) map.set(AUDIT_LAMPO_CODE, 1);
     return map;
   });
 
@@ -227,6 +234,9 @@ export function QuoteEditor({ initial }: Props) {
           map.set(it.productCode, 1);
         }
       }
+      // Vedi nota nel useState init: i voucher Diagnosi/Audit sono flag, non items.
+      if (initial?.diagnosiGiaPagata) map.set(DIAGNOSI_CODE, 1);
+      if (initial?.voucherAuditApplied) map.set(AUDIT_LAMPO_CODE, 1);
       return map;
     });
 

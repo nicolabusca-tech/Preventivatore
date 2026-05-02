@@ -96,6 +96,7 @@ export async function POST(req: Request) {
           scontoAiVocaleAnnuale: source.scontoAiVocaleAnnuale,
           scontoWaAnnuale: source.scontoWaAnnuale,
           voucherAuditApplied: source.voucherAuditApplied,
+          creditoMcEnabled: source.creditoMcEnabled,
           kind: source.kind,
           status: "draft",
           sentAt: null,

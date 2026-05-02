@@ -99,14 +99,21 @@ function computeSetupTotals(quote: QuoteWithRelations) {
   if (totalSetup < 0) totalSetup = 0;
 
   const grossSetupModuli = Math.max(0, Math.round(Number(quote.setupBeforeDiscount) || 0));
-  const creditoMetodoCantiere = computeCredito({
-    setupGross: grossSetupModuli > 0 ? grossSetupModuli : Math.max(0, setupBefore),
-    diagnosiGiaPagata: !!quote.diagnosiGiaPagata,
-    voucherAuditApplied: !!quote.voucherAuditApplied,
-    manualDiscountAmount: quote.discountAmount,
-    manualDiscountPercent: quote.discountPercent,
-    legacyDiscountType: quote.discountType,
-  });
+  // Quando il flag e' false (impostato in editor), il credito MC esce 0 e i
+  // blocchi che ne parlano (riepilogo + leva di accelerazione) non vengono
+  // renderizzati a valle. Per compatibilita' con preventivi storici (creati
+  // prima del campo) il campo manca / e' true: trattiamo solo l'esplicito false.
+  const creditoMcEnabled = (quote as { creditoMcEnabled?: boolean }).creditoMcEnabled !== false;
+  const creditoMetodoCantiere = creditoMcEnabled
+    ? computeCredito({
+        setupGross: grossSetupModuli > 0 ? grossSetupModuli : Math.max(0, setupBefore),
+        diagnosiGiaPagata: !!quote.diagnosiGiaPagata,
+        voucherAuditApplied: !!quote.voucherAuditApplied,
+        manualDiscountAmount: quote.discountAmount,
+        manualDiscountPercent: quote.discountPercent,
+        legacyDiscountType: quote.discountType,
+      })
+    : 0;
 
   return {
     setupBefore,
@@ -934,6 +941,9 @@ function renderPage6(quote: QuoteWithRelations) {
       </div>
     </div>
 
+    ${
+      setupTotals.creditoMetodoCantiere > 0
+        ? `
     <div class="no-break box box-green" style="margin-top:8mm;padding:4mm 5mm">
       <div class="caps" style="font-size:9.5pt;font-weight:800;color:#2D7A3E;letter-spacing:0.04em">
         HAI UN CREDITO DI ${escapeHtml(formatEuro(setupTotals.creditoMetodoCantiere))}
@@ -945,6 +955,9 @@ function renderPage6(quote: QuoteWithRelations) {
         Bundle Multicanale, Direzione mensile e altro.
       </div>
     </div>
+    `
+        : ""
+    }
 
     <div class="no-break" style="margin-top:8mm">
       <div class="caps orange" style="font-size:8pt">Metti Metodo Cantiere a confronto</div>
@@ -1076,6 +1089,9 @@ function renderPage8Roi(quote: QuoteWithRelations) {
       </div>
     </div>
 
+    ${
+      setupTotals.creditoMetodoCantiere > 0
+        ? `
     <div class="no-break box box-green" style="margin-top:8mm;padding:5mm 6mm">
       <div class="caps" style="font-size:9.5pt;font-weight:800;color:#2D7A3E;letter-spacing:0.04em">
         LEVA DI ACCELERAZIONE: CREDITO MC
@@ -1088,6 +1104,9 @@ function renderPage8Roi(quote: QuoteWithRelations) {
         )}</b>.
       </div>
     </div>
+    `
+        : ""
+    }
   </section>
   `;
 }

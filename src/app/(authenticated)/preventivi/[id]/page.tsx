@@ -180,6 +180,7 @@ export default function DettaglioPreventivoPage() {
       notes: quote.notes,
       expiresAt: quote.expiresAt,
       voucherAuditApplied: quote.voucherAuditApplied,
+      creditoMcEnabled: quote.creditoMcEnabled,
       scontoCrmAnnuale: quote.scontoCrmAnnuale,
       scontoAiVocaleAnnuale: quote.scontoAiVocaleAnnuale,
       scontoWaAnnuale: quote.scontoWaAnnuale,
@@ -244,14 +245,18 @@ export default function DettaglioPreventivoPage() {
     quote.setupBeforeDiscount > 0
       ? quote.setupBeforeDiscount
       : setupLineItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  const creditoMetodoCantiere = computeCredito({
-    setupGross: grossSetupForCredito,
-    diagnosiGiaPagata: quote.diagnosiGiaPagata,
-    voucherAuditApplied: quote.voucherAuditApplied,
-    manualDiscountAmount: quote.discountAmount,
-    manualDiscountPercent: quote.discountPercent,
-    legacyDiscountType: quote.discountType,
-  });
+  // Se il flag e' false sul preventivo, niente credito mostrato in dettaglio.
+  const creditoMcEnabled = quote.creditoMcEnabled !== false;
+  const creditoMetodoCantiere = creditoMcEnabled
+    ? computeCredito({
+        setupGross: grossSetupForCredito,
+        diagnosiGiaPagata: quote.diagnosiGiaPagata,
+        voucherAuditApplied: quote.voucherAuditApplied,
+        manualDiscountAmount: quote.discountAmount,
+        manualDiscountPercent: quote.discountPercent,
+        legacyDiscountType: quote.discountType,
+      })
+    : 0;
 
   const fase = deriveFase(quote);
   const faseOpt = getFaseOption(fase);

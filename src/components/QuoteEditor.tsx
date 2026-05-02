@@ -13,6 +13,8 @@ import {
 } from "@/lib/roi";
 import { CrmCustomerSearch, type CrmCustomer } from "@/components/CrmCustomerSearch";
 import { ClienteForm } from "@/components/quote-editor/ClienteForm";
+import { DiagnosiRoiInputs } from "@/components/quote-editor/DiagnosiRoiInputs";
+import { ScadenzaENote } from "@/components/quote-editor/ScadenzaENote";
 import { computePricing, type PricingInput } from "@/lib/pricing/engine";
 import type { QuoteEditorInitialData } from "@/lib/types/quote";
 
@@ -846,85 +848,14 @@ export function QuoteEditor({ initial }: Props) {
           onClearCrm={() => setCrmCustomerId(null)}
         />
 
-        <div className="card p-5 sm:p-6">
-          <h2 className="text-2xl mb-4">Diagnosi &amp; ROI (prima della proposta)</h2>
-          <p className="text-sm mb-4" style={{ color: "var(--mc-text-secondary)" }}>
-            Seleziona <strong>Diagnosi Strategica</strong> o <strong>Audit Lampo</strong> sotto, nel
-            listino: indicano l&apos;importo come già versato (credito, una sola tra le due). I totali
-            a destra li mostrano in verde con il segno meno.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="label">Origine cliente</label>
-              <input
-                type="text"
-                className="input"
-                value={originCliente}
-                onChange={(e) => setOriginCliente(e.target.value)}
-                placeholder="es. Passaparola, Ads, Partner..."
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label">Estratto diagnosi</label>
-              <textarea
-                rows={3}
-                className="input"
-                value={estrattoDiagnosi}
-                onChange={(e) => setEstrattoDiagnosi(e.target.value)}
-                placeholder="Sintesi problemi/opportunità emersi..."
-              />
-            </div>
-
-            <div>
-              <label className="label">Preventivi / mese</label>
-              <input
-                type="number"
-                className="input"
-                min={0}
-                value={roiInputs.preventiviMese}
-                onChange={(e) =>
-                  setRoiInputs((p) => ({ ...p, preventiviMese: Number(e.target.value) || 0 }))
-                }
-              />
-            </div>
-            <div>
-              <label className="label">Importo medio (€)</label>
-              <input
-                type="number"
-                className="input"
-                min={0}
-                value={roiInputs.importoMedio}
-                onChange={(e) =>
-                  setRoiInputs((p) => ({ ...p, importoMedio: Number(e.target.value) || 0 }))
-                }
-              />
-            </div>
-            <div>
-              <label className="label">Conversione attuale (%)</label>
-              <input
-                type="number"
-                className="input"
-                min={0}
-                value={roiInputs.conversioneAttuale}
-                onChange={(e) =>
-                  setRoiInputs((p) => ({ ...p, conversioneAttuale: Number(e.target.value) || 0 }))
-                }
-              />
-            </div>
-            <div>
-              <label className="label">Margine commessa (%)</label>
-              <input
-                type="number"
-                className="input"
-                min={0}
-                value={roiInputs.margineCommessa}
-                onChange={(e) =>
-                  setRoiInputs((p) => ({ ...p, margineCommessa: Number(e.target.value) || 0 }))
-                }
-              />
-            </div>
-          </div>
-        </div>
+        <DiagnosiRoiInputs
+          originCliente={originCliente}
+          setOriginCliente={setOriginCliente}
+          estrattoDiagnosi={estrattoDiagnosi}
+          setEstrattoDiagnosi={setEstrattoDiagnosi}
+          roiInputs={roiInputs}
+          setRoiInputs={setRoiInputs}
+        />
 
         <div className="card p-5 sm:p-6">
           <h2 className="text-2xl mb-4">Componi l&apos;offerta</h2>
@@ -1098,35 +1029,12 @@ export function QuoteEditor({ initial }: Props) {
           </div>
         </div>
 
-        <div className="card p-5 sm:p-6">
-          <h2 className="text-2xl mb-4">Scadenza e note</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label">Validità (giorni)</label>
-              <input
-                type="number"
-                min={1}
-                className="input"
-                value={expiresInDays}
-                onChange={(e) => setExpiresInDays(Number(e.target.value) || 30)}
-              />
-              <p className="helper-text">
-                Scadenza:{" "}
-                {new Date(Date.now() + Math.max(1, expiresInDays) * 24 * 60 * 60 * 1000).toLocaleDateString("it-IT")}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4">
-            <label className="label">Note interne</label>
-            <textarea
-              rows={3}
-              className="input"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Note operative, condizioni speciali, follow-up..."
-            />
-          </div>
-        </div>
+        <ScadenzaENote
+          expiresInDays={expiresInDays}
+          setExpiresInDays={setExpiresInDays}
+          notes={notes}
+          setNotes={setNotes}
+        />
       </div>
 
       <div className="lg:col-span-1 lg:self-start">

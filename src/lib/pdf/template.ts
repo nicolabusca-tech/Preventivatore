@@ -696,6 +696,9 @@ function renderPage6(quote: QuoteWithRelations) {
   const waMonthlyFromItems = quote.items
     .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_WA"))
     .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
+  const dceMonthlyFromItems = quote.items
+    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("DCE"))
+    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
 
   const crmPrepay =
     !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0
@@ -707,6 +710,22 @@ function renderPage6(quote: QuoteWithRelations) {
       : null;
   const waPrepay =
     !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? prepayFromMonthly(waMonthlyFromItems, "WA") : null;
+
+  // Voci visibili nei "canoni mensili" del riepilogo: se il canone è in prepay annuale,
+  // non viene addebitato mese per mese (compare invece nel blocco "annuale anticipato").
+  // Cosi' il cliente vede chiaramente quali servizi pesano ogni mese e con che importo per
+  // categoria. I DCE non hanno prepay e finiscono sempre tra i mensili.
+  const crmMonthlyMostrato = !!quote.scontoCrmAnnuale ? 0 : crmMonthlyFromItems;
+  const aiMonthlyMostrato = !!quote.scontoAiVocaleAnnuale ? 0 : aiMonthlyFromItems;
+  const waMonthlyMostrato = !!quote.scontoWaAnnuale ? 0 : waMonthlyFromItems;
+  const altriMonthlyMostrato = Math.max(
+    0,
+    canoniMensiliRicorrenti -
+      crmMonthlyMostrato -
+      aiMonthlyMostrato -
+      waMonthlyMostrato -
+      dceMonthlyFromItems
+  );
 
   const crmAnticipatoHtml = crmPrepay
     ? pdfCanoneAnticipatoRows({
@@ -815,12 +834,85 @@ function renderPage6(quote: QuoteWithRelations) {
               <div class="caps" style="font-size:8pt;letter-spacing:0.16em;color:rgba(250,248,244,0.75)">CANONI MENSILI</div>
             </td>
           </tr>
+          ${
+            crmMonthlyMostrato > 0
+              ? `
           <tr>
-            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale canoni mensili (addebito mese per mese)</td>
-            <td class="right" style="border-bottom:none"><span style="font-size:16pt">${escapeHtml(
-              formatEuro(canoniMensiliRicorrenti)
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Canone CRM</td>
+            <td class="right" style="border-bottom:none"><span style="font-size:13pt">${escapeHtml(
+              formatEuro(crmMonthlyMostrato)
             )} / mese</span></td>
           </tr>
+          `
+              : ""
+          }
+          ${
+            aiMonthlyMostrato > 0
+              ? `
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Canone AI Vocale</td>
+            <td class="right" style="border-bottom:none"><span style="font-size:13pt">${escapeHtml(
+              formatEuro(aiMonthlyMostrato)
+            )} / mese</span></td>
+          </tr>
+          `
+              : ""
+          }
+          ${
+            waMonthlyMostrato > 0
+              ? `
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Canone WhatsApp</td>
+            <td class="right" style="border-bottom:none"><span style="font-size:13pt">${escapeHtml(
+              formatEuro(waMonthlyMostrato)
+            )} / mese</span></td>
+          </tr>
+          `
+              : ""
+          }
+          ${
+            dceMonthlyFromItems > 0
+              ? `
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Direzione Commerciale Esterna</td>
+            <td class="right" style="border-bottom:none"><span style="font-size:13pt">${escapeHtml(
+              formatEuro(dceMonthlyFromItems)
+            )} / mese</span></td>
+          </tr>
+          `
+              : ""
+          }
+          ${
+            altriMonthlyMostrato > 0
+              ? `
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Altri canoni</td>
+            <td class="right" style="border-bottom:none"><span style="font-size:13pt">${escapeHtml(
+              formatEuro(altriMonthlyMostrato)
+            )} / mese</span></td>
+          </tr>
+          `
+              : ""
+          }
+          ${
+            canoniMensiliRicorrenti > 0
+              ? `
+          <tr><td colspan="2" style="border-bottom:1px solid rgba(250,248,244,0.18);padding-top:1mm"></td></tr>
+          <tr>
+            <td style="border-bottom:none;color:rgba(250,248,244,0.75)"><b>Totale canoni mensili</b></td>
+            <td class="right" style="border-bottom:none"><span style="font-size:16pt"><b>${escapeHtml(
+              formatEuro(canoniMensiliRicorrenti)
+            )}</b> / mese</span></td>
+          </tr>
+          `
+              : `
+          <tr>
+            <td colspan="2" style="border-bottom:none;color:rgba(250,248,244,0.55);font-style:italic;font-size:9pt">
+              Nessun canone addebitato mese per mese: tutti i canoni del primo anno sono in pagamento annuale anticipato.
+            </td>
+          </tr>
+          `
+          }
           ${crmAnticipatoHtml}
           ${aiAnticipatoHtml}
           ${waAnticipatoHtml}

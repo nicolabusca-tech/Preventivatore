@@ -92,6 +92,13 @@ export type PricingInput = {
    */
   legacyDiscountAmount?: number | null;
   legacyDiscountPercent?: number | null;
+  /**
+   * Flag per attivare/disattivare il Credito Metodo Cantiere su questo
+   * preventivo. Quando false, `creditoMetodoCantiere` esce sempre 0 e il
+   * blocco non va mostrato in UI/PDF. Default true per coerenza con i
+   * preventivi storici, ma la UI dei nuovi preventivi parte con false.
+   */
+  creditoMcEnabled?: boolean;
 };
 
 export type BreakdownLine = {
@@ -366,14 +373,19 @@ export function computePricing(input: PricingInput): PricingOutput {
   const effectivePercent = hasActiveManual
     ? md.percent
     : Math.max(0, Math.round(Number(input.legacyDiscountPercent) || 0));
-  const creditoMetodoCantiere = computeCredito({
-    setupGross,
-    diagnosiGiaPagata: input.diagnosiGiaPagata,
-    voucherAuditApplied: input.voucherAuditApplied,
-    manualDiscountAmount: effectiveAmount,
-    manualDiscountPercent: effectivePercent,
-    legacyDiscountType: effectiveLegacyType,
-  });
+  // Se il flag e' esplicitamente false, il credito non si applica.
+  // Se non e' passato (undefined) restiamo retro-compatibili.
+  const creditoMcEnabled = input.creditoMcEnabled !== false;
+  const creditoMetodoCantiere = creditoMcEnabled
+    ? computeCredito({
+        setupGross,
+        diagnosiGiaPagata: input.diagnosiGiaPagata,
+        voucherAuditApplied: input.voucherAuditApplied,
+        manualDiscountAmount: effectiveAmount,
+        manualDiscountPercent: effectivePercent,
+        legacyDiscountType: effectiveLegacyType,
+      })
+    : 0;
 
   return {
     setupGross,

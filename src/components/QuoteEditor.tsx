@@ -158,6 +158,8 @@ export function QuoteEditor({ initial }: Props) {
   const [scontoCrmAnnuale, setScontoCrmAnnuale] = useState(initial?.scontoCrmAnnuale ?? true);
   const [scontoAiVocaleAnnuale, setScontoAiVocaleAnnuale] = useState(initial?.scontoAiVocaleAnnuale ?? false);
   const [scontoWaAnnuale, setScontoWaAnnuale] = useState(initial?.scontoWaAnnuale ?? false);
+  // Credito MC: default UI = false (leva spenta). Sui preventivi gia' salvati si legge dal flag persistito.
+  const [creditoMcEnabled, setCreditoMcEnabled] = useState(initial?.creditoMcEnabled ?? false);
 
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [expiresInDays, setExpiresInDays] = useState(30);
@@ -243,6 +245,7 @@ export function QuoteEditor({ initial }: Props) {
     setScontoCrmAnnuale(initial?.scontoCrmAnnuale ?? true);
     setScontoAiVocaleAnnuale(initial?.scontoAiVocaleAnnuale ?? false);
     setScontoWaAnnuale(initial?.scontoWaAnnuale ?? false);
+    setCreditoMcEnabled(initial?.creditoMcEnabled ?? false);
 
     setNotes(initial?.notes ?? "");
 
@@ -365,6 +368,7 @@ export function QuoteEditor({ initial }: Props) {
       legacyDiscountType: initial?.discountType ?? null,
       legacyDiscountAmount: initial?.discountAmount ?? null,
       legacyDiscountPercent: initial?.discountPercent ?? null,
+      creditoMcEnabled,
     };
     return computePricing(input);
   }, [
@@ -379,6 +383,7 @@ export function QuoteEditor({ initial }: Props) {
     initial?.discountType,
     initial?.discountAmount,
     initial?.discountPercent,
+    creditoMcEnabled,
   ]);
 
   const roiLive = useMemo(() => {
@@ -651,6 +656,7 @@ export function QuoteEditor({ initial }: Props) {
       scontoCrmAnnuale,
       scontoAiVocaleAnnuale,
       scontoWaAnnuale,
+      creditoMcEnabled,
     };
   }
 
@@ -1415,24 +1421,54 @@ export function QuoteEditor({ initial }: Props) {
               </div>
             )}
 
-            {totals.creditoMetodoCantiere > 0 && (
+            {/* Toggle Credito Metodo Cantiere: leva commerciale on/off.
+               Visibile solo se c'è almeno una voce in preventivo. Default UI off:
+               si accende caso per caso quando il commerciale vuole offrirlo come bonus. */}
+            {selected.size > 0 && (
               <div
-                className="mt-3 rounded-lg p-4"
+                className="mt-3 rounded-lg p-3 flex items-start gap-3"
                 style={{
-                  background: "linear-gradient(135deg, rgba(45, 122, 62, 0.14), rgba(45, 122, 62, 0.05))",
-                  border: "1px solid rgba(45, 122, 62, 0.4)",
+                  background: creditoMcEnabled
+                    ? "linear-gradient(135deg, rgba(45, 122, 62, 0.14), rgba(45, 122, 62, 0.05))"
+                    : "var(--mc-bg-elevated)",
+                  border: creditoMcEnabled
+                    ? "1px solid rgba(45, 122, 62, 0.4)"
+                    : "1px solid var(--mc-border)",
+                  transition: "all 0.15s ease",
                 }}
               >
-                <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "#2D7A3E" }}>
-                  Credito Metodo Cantiere
-                </div>
-                <div className="text-2xl font-bold tabular-nums mt-1" style={{ color: "#2D7A3E" }}>
-                  {formatEuro(totals.creditoMetodoCantiere)}
-                </div>
-                <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--mc-text-secondary)" }}>
-                  10% sul netto setup modulo listino (dopo voucher Diagnosi/Audit e sconto codice sul setup). I canoni in
-                  anticipo annuo non entrano in questa base. Spendibile entro 12 mesi su qualunque voce del listino.
-                </p>
+                <input
+                  id="credito-mc-toggle"
+                  type="checkbox"
+                  checked={creditoMcEnabled}
+                  onChange={(e) => setCreditoMcEnabled(e.target.checked)}
+                  className="mt-0.5 cursor-pointer"
+                  style={{ accentColor: "#2D7A3E" }}
+                />
+                <label htmlFor="credito-mc-toggle" className="flex-1 cursor-pointer min-w-0">
+                  <div
+                    className="text-xs font-bold uppercase tracking-wider"
+                    style={{ color: creditoMcEnabled ? "#2D7A3E" : "var(--mc-text-secondary)" }}
+                  >
+                    Credito Metodo Cantiere
+                  </div>
+                  {creditoMcEnabled ? (
+                    <>
+                      <div className="text-2xl font-bold tabular-nums mt-1" style={{ color: "#2D7A3E" }}>
+                        {formatEuro(totals.creditoMetodoCantiere)}
+                      </div>
+                      <p className="text-[10px] mt-2 leading-relaxed" style={{ color: "var(--mc-text-secondary)" }}>
+                        10% sul netto setup modulo listino (dopo voucher Diagnosi/Audit e sconto codice sul setup). I canoni
+                        in anticipo annuo non entrano in questa base. Spendibile entro 12 mesi su qualunque voce del listino.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--mc-text-muted)" }}>
+                      Leva commerciale spenta. Attivala se vuoi offrire al cliente un credito del 10% sul setup, spendibile
+                      entro 12 mesi su qualunque voce del listino.
+                    </p>
+                  )}
+                </label>
               </div>
             )}
           </div>

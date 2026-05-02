@@ -67,6 +67,7 @@ async function main() {
     scontoAiVocaleAnnuale: false,
     scontoWaAnnuale: true,
     voucherAuditApplied: false,
+    creditoMcEnabled: true,
     kind: "STANDARD",
     status: "draft",
     sentAt: null,

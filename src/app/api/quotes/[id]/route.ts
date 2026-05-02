@@ -157,6 +157,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             scontoCrmAnnuale: data.scontoCrmAnnuale !== undefined ? !!data.scontoCrmAnnuale : quote.scontoCrmAnnuale,
             scontoAiVocaleAnnuale: data.scontoAiVocaleAnnuale !== undefined ? !!data.scontoAiVocaleAnnuale : quote.scontoAiVocaleAnnuale,
             scontoWaAnnuale: data.scontoWaAnnuale !== undefined ? !!data.scontoWaAnnuale : quote.scontoWaAnnuale,
+            creditoMcEnabled: data.creditoMcEnabled !== undefined ? !!data.creditoMcEnabled : quote.creditoMcEnabled,
             // dceProductId viene mantenuto/aggiornato da create route (enforced); qui lo accettiamo se passato
             dceProductId: data.dceProductId !== undefined ? (data.dceProductId || null) : quote.dceProductId,
           },

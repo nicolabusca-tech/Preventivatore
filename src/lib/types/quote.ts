@@ -40,6 +40,8 @@ export type QuoteEditorInitialData = {
   voucherAuditApplied: boolean;
   /** STANDARD | MANUAL — se MANUAL, niente PDF da editor listino. */
   kind?: string;
+  /** Flag Credito Metodo Cantiere: leva commerciale on/off per il singolo preventivo. */
+  creditoMcEnabled?: boolean;
   scontoCrmAnnuale: boolean;
   scontoAiVocaleAnnuale: boolean;
   scontoWaAnnuale: boolean;
@@ -107,6 +109,8 @@ export type QuoteDetail = {
   scontoAiVocaleAnnuale: boolean;
   scontoWaAnnuale: boolean;
   voucherAuditApplied: boolean;
+  /** Flag Credito Metodo Cantiere: leva commerciale on/off per il singolo preventivo. */
+  creditoMcEnabled: boolean;
   status: string;
   sentAt: string | null;
   viewedAt: string | null;

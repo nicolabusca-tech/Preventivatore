@@ -64,6 +64,7 @@ const quote = {
   scontoAiVocaleAnnuale: false,
   scontoWaAnnuale: false,
   voucherAuditApplied: false,
+    creditoMcEnabled: true,
   kind: "STANDARD",
   status: "draft",
   sentAt: null,

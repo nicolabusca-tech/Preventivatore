@@ -17,6 +17,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   quotes    Quote[]
+  auditLogs AuditLog[]
 }
 
 model Product {
@@ -228,4 +229,30 @@ model DiscountCode {
   active          Boolean   @default(true)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+}
+
+// Audit log: traccia "chi ha fatto cosa quando" sulle entita' principali
+// (Quote, Product, DiscountCode, User). Usato per scoprire chi ha modificato
+// un preventivo dopo che il cliente lo contesta, o chi ha cambiato un prezzo
+// di listino. Software a uso interno: niente sicurezza, solo tracciabilita'.
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  /// CREATE | UPDATE | DELETE | SEND | DUPLICATE
+  action     String
+  /// Quote | Product | DiscountCode | User | ...
+  entityType String
+  entityId   String
+  /// Snapshot JSON dell'entita' prima della modifica (nullable per CREATE).
+  before     String?
+  /// Snapshot JSON dell'entita' dopo la modifica (nullable per DELETE).
+  after      String?
+  /// Metadata strutturati JSON: es. sourceId per DUPLICATE, target email per SEND.
+  metadata   String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
 }

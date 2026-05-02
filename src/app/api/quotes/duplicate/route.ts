@@ -8,6 +8,7 @@ import { computeQuoteCosts } from "@/lib/costs";
 import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
 import { DuplicateQuoteSchema, badRequestFromZod } from "@/lib/quotes/schemas";
 import { ZodError } from "zod";
+import { logAction, summarizeForAudit, QUOTE_AUDIT_KEYS } from "@/lib/audit/log";
 
 function buildNextQuoteNumber(prev: string | null, year: number) {
   const prefix = `Q${year}-`;
@@ -213,6 +214,16 @@ export async function POST(req: Request) {
   if (!detail) {
     return NextResponse.json({ error: "Preventivo duplicato ma non recuperabile." }, { status: 500 });
   }
+
+  await logAction({
+    userId: session.user.id,
+    action: "DUPLICATE",
+    entityType: "Quote",
+    entityId: created.id,
+    after: summarizeForAudit(detail as unknown as Record<string, unknown>, [...QUOTE_AUDIT_KEYS]),
+    metadata: { sourceQuoteId: source.id, sourceQuoteNumber: source.quoteNumber },
+  });
+
   return NextResponse.json(detail);
 }
 

@@ -7,6 +7,7 @@ import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 import { SendQuoteSchema, badRequestFromZod } from "@/lib/quotes/schemas";
 import { ZodError } from "zod";
+import { logAction } from "@/lib/audit/log";
 
 /** Base API CRM (stessa documentazione PDF "Documentazione API - CRM Metodo Cantiere") */
 const FW360_API_BASE =
@@ -429,6 +430,19 @@ export async function POST(req: Request) {
   }
 
   // Step 6 — Response (il preventivo è già "sent"; avvisi CRM sono informativi)
+  await logAction({
+    userId: session.user.id,
+    action: "SEND",
+    entityType: "Quote",
+    entityId: quote.id,
+    metadata: {
+      quoteNumber: quote.quoteNumber,
+      clientEmail: quote.clientEmail,
+      crmCustomerId: customerId,
+      crmWarnings: crmWarnings.length ? crmWarnings : undefined,
+    },
+  });
+
   return NextResponse.json({
     success: true,
     status: "sent",

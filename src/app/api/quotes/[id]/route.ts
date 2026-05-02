@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 import { computeQuoteCosts } from "@/lib/costs";
+import { logAction, summarizeForAudit, QUOTE_AUDIT_KEYS } from "@/lib/audit/log";
 import { quoteDetailInclude, toQuoteDetail } from "@/lib/quotes/serialize-quote-detail";
 import type { QuoteDetail } from "@/lib/types/quote";
 

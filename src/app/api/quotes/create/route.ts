@@ -8,6 +8,7 @@ import { computeQuoteCosts } from "@/lib/costs";
 import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
 import { CreateQuoteSchema, badRequestFromZod } from "@/lib/quotes/schemas";
 import { ZodError } from "zod";
+import { logAction, summarizeForAudit, QUOTE_AUDIT_KEYS } from "@/lib/audit/log";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
@@ -308,5 +309,15 @@ export async function POST(req: Request) {
   if (!detail) {
     return NextResponse.json({ error: "Preventivo creato ma non recuperabile." }, { status: 500 });
   }
+
+  // Audit: chi ha creato cosa.
+  await logAction({
+    userId: session.user.id,
+    action: "CREATE",
+    entityType: "Quote",
+    entityId: quote.id,
+    after: summarizeForAudit(quote, [...QUOTE_AUDIT_KEYS]),
+  });
+
   return NextResponse.json(detail);
 }

@@ -165,8 +165,6 @@ export async function POST(req: Request) {
             scontoCrmAnnuale: false,
             scontoAiVocaleAnnuale: false,
             scontoWaAnnuale: false,
-            // I preventivi manuali non usano il Credito MC (logica del listino).
-            creditoMcEnabled: false,
             roiPreventiviMese: null,
             roiImportoMedio: null,
             roiConversioneAttuale: null,

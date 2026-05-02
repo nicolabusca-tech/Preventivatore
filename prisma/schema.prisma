@@ -123,12 +123,6 @@ model Quote {
   scontoAiVocaleAnnuale Boolean     @default(false)
   scontoWaAnnuale       Boolean     @default(false)
   voucherAuditApplied   Boolean     @default(false)
-  // Credito Metodo Cantiere: leva commerciale opzionale.
-  // Default true a livello DB: i preventivi storici (creati prima di questa
-  // modifica) mantengono il credito attivo come comportamento attuale.
-  // I nuovi preventivi creati dall'editor partono spenti (UI default false):
-  // il commerciale lo accende caso per caso quando vuole usarlo come bonus.
-  creditoMcEnabled      Boolean     @default(true)
   // Tipo del preventivo:
   //  - STANDARD: composto dal listino (workflow QuoteEditor + PDF + invio)
   //  - MANUAL:   composto a voci libere fuori dal listino (no PDF/email)

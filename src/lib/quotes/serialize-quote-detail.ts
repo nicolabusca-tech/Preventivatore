@@ -74,7 +74,6 @@ export function toQuoteDetail(quote: QuoteDetailDb): QuoteDetail {
     scontoAiVocaleAnnuale: quote.scontoAiVocaleAnnuale,
     scontoWaAnnuale: quote.scontoWaAnnuale,
     voucherAuditApplied: quote.voucherAuditApplied,
-    creditoMcEnabled: quote.creditoMcEnabled,
     status: quote.status,
     sentAt: toIso(quote.sentAt),
     viewedAt: toIso(quote.viewedAt),

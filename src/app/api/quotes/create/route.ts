@@ -67,7 +67,6 @@ export async function POST(req: Request) {
     discountPercent,
     scontoCrmAnnuale,
     voucherAuditApplied,
-    creditoMcEnabled,
   } = data;
 
   if (!clientName || !items || items.length === 0) {
@@ -188,10 +187,6 @@ export async function POST(req: Request) {
           discountPercent: discountPercent || 0,
           scontoCrmAnnuale: scontoCrmAnnuale ?? false,
           voucherAuditApplied: voucherAuditApplied || false,
-          // Default false sui nuovi preventivi: il credito e' una leva
-          // commerciale opzionale che il commerciale accende caso per caso.
-          // Solo se il client manda esplicitamente true, salviamo true.
-          creditoMcEnabled: creditoMcEnabled === true,
           items: {
             create: finalItems.map((item: any) => ({
               productCode: item.productCode,

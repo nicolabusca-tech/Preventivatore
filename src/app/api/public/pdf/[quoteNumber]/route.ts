@@ -64,7 +64,30 @@ export async function GET(
     });
   }
 
-  try {
+    // Se abbiamo uno snapshot del PDF al momento dell'invio, serviamo quello
+  // (immutabile). Solo se manca, rigeneriamo dinamicamente.
+  const snapshot = await prisma.quotePdfSnapshot.findUnique({
+    where: { quoteId: quote.id },
+    select: { pdfData: true },
+  });
+  if (snapshot?.pdfData) {
+    const safeQuoteNumber = safeFileToken(String(quote.quoteNumber || "preventivo"));
+    const filename = `Piano-Operativo-${safeQuoteNumber || "preventivo"}.pdf`;
+    const filenameStar = encodeURIComponent(filename);
+    const buf = Buffer.from(snapshot.pdfData);
+    return new NextResponse(new Uint8Array(buf), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${filename}"; filename*=UTF-8''${filenameStar}`,
+        "Content-Length": buf.length.toString(),
+        "Cache-Control": "private, max-age=300",
+        "X-Pdf-Source": "snapshot",
+      },
+    });
+  }
+
+try {
     const pdfBuffer = await generatePdf(quote);
     const safeQuoteNumber = safeFileToken(String(quote.quoteNumber || "preventivo"));
     const filename = `Piano-Operativo-${safeQuoteNumber || "preventivo"}.pdf`;

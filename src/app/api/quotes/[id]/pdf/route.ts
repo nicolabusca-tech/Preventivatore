@@ -34,6 +34,33 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
   }
 
+  // Se il preventivo è gia' stato inviato e abbiamo lo snapshot del PDF
+  // salvato a quel momento, lo serviamo immutabile. Cosi' un cliente che apre
+  // il link del preventivo dopo che noi abbiamo cambiato il listino vede
+  // sempre lo stesso PDF di quando l'aveva ricevuto.
+  if (quote.status === "sent" || quote.status === "viewed") {
+    const snapshot = await prisma.quotePdfSnapshot.findUnique({
+      where: { quoteId: quote.id },
+      select: { pdfData: true },
+    });
+    if (snapshot?.pdfData) {
+      const safeQuoteNumber = safeFileToken(String(quote.quoteNumber || "preventivo"));
+      const filename = `Piano-Operativo-${safeQuoteNumber || "preventivo"}.pdf`;
+      const filenameStar = encodeURIComponent(filename);
+      const pdfBuffer = Buffer.from(snapshot.pdfData);
+      return new NextResponse(new Uint8Array(pdfBuffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="${filename}"; filename*=UTF-8''${filenameStar}`,
+          "Content-Length": pdfBuffer.length.toString(),
+          "Cache-Control": "no-store",
+          "X-Pdf-Source": "snapshot",
+        },
+      });
+    }
+  }
+
   try {
     const pdfBuffer = await generatePdf(quote);
     const safeQuoteNumber = safeFileToken(String(quote.quoteNumber || "preventivo"));

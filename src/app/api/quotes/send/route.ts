@@ -8,6 +8,7 @@ import { assertCsrf } from "@/lib/security/csrf";
 import { SendQuoteSchema, badRequestFromZod } from "@/lib/quotes/schemas";
 import { ZodError } from "zod";
 import { logAction } from "@/lib/audit/log";
+import { generatePdf } from "@/lib/pdf/generate-pdf";
 
 /** Base API CRM (stessa documentazione PDF "Documentazione API - CRM Metodo Cantiere") */
 const FW360_API_BASE =
@@ -442,6 +443,32 @@ export async function POST(req: Request) {
       crmWarnings: crmWarnings.length ? crmWarnings : undefined,
     },
   });
+
+  // Step 5 — Snapshot del PDF al momento dell'invio. Da qui in poi il PDF
+  // pubblico (link condiviso col cliente) sara' servito da questo blob salvato,
+  // non rigenerato. Cosi' modifiche future a listino o template non alterano
+  // il preventivo gia' inviato (immutabilita' contrattuale).
+  // Errore in questa fase non bloccca l'invio: il flusso CRM e' gia' completato.
+  try {
+    const fullQuote = await prisma.quote.findUnique({
+      where: { id: quote.id },
+      include: { items: true, user: { select: { name: true, email: true } } },
+    });
+    if (fullQuote) {
+      const pdfBuffer = await generatePdf(fullQuote);
+      await prisma.quotePdfSnapshot.upsert({
+        where: { quoteId: quote.id },
+        create: { quoteId: quote.id, pdfData: pdfBuffer },
+        update: { pdfData: pdfBuffer, createdAt: new Date() },
+      });
+    }
+  } catch (e) {
+    console.error("[send] PDF snapshot fallito (non blocca invio)", {
+      error: e instanceof Error ? e.message : String(e),
+      quoteId: quote.id,
+    });
+    crmWarnings.push("Snapshot PDF non salvato: il PDF verra' rigenerato dinamicamente all'apertura.");
+  }
 
   return NextResponse.json({
     success: true,

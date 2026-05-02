@@ -150,6 +150,7 @@ model Quote {
   items                 QuoteItem[]
   payments              QuotePayment[]
   adjustments           QuoteAdjustment[]
+  pdfSnapshot           QuotePdfSnapshot?
 }
 
 model QuoteItem {
@@ -255,4 +256,16 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([userId])
   @@index([createdAt])
+}
+
+// Snapshot binario del PDF al momento del primo invio. Il preventivo che il
+// cliente riceve via email/link diventa cosi' immutabile: cambiare in seguito
+// il listino o lo schema del template non modifica i PDF gia' inviati.
+// Limite Postgres bytea ~200-500 KB/record, accettabile per i nostri volumi.
+model QuotePdfSnapshot {
+  id        String   @id @default(cuid())
+  quoteId   String   @unique
+  pdfData   Bytes
+  createdAt DateTime @default(now())
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 }

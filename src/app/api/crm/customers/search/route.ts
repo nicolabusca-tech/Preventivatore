@@ -26,11 +26,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ results: [] });
   }
 
-  const apiKey = process.env.CRM_API_KEY;
+  const apiKey = process.env.CRM_API_KEY || process.env.FW360_API_KEY;
   const apiBase = process.env.CRM_API_BASE || "https://metodocantiere.it/m/api";
 
   if (!apiKey) {
-    console.error("CRM_API_KEY non configurata in .env");
+    console.error("CRM_API_KEY / FW360_API_KEY non configurata in .env");
     return NextResponse.json(
       { error: "Configurazione CRM mancante. Contatta l'amministratore." },
       { status: 500 }

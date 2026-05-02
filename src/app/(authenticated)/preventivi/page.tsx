@@ -471,6 +471,9 @@ export default function PreventiviPage() {
                   <th className="text-right">Costo 1° anno</th>
                   <th className="text-right">Margine 1° anno</th>
                   <th>Fase</th>
+                  <th className="text-center w-12 text-xs font-semibold" title="Scarica PDF">
+                    PDF
+                  </th>
                   <th className="w-8" aria-hidden="true"></th>
                 </tr>
               </thead>
@@ -484,6 +487,7 @@ export default function PreventiviPage() {
                   const isExpiring =
                     fase === "in_trattativa" && days != null && days <= 7 && days >= 0;
                   const rowBusy = busyId === q.id;
+                  const isManualQuote = q.kind === "MANUAL";
                   return (
                     <tr
                       key={q.id}
@@ -491,7 +495,7 @@ export default function PreventiviPage() {
                         // Evita di aprire il dettaglio se il click arriva dal select fase
                         // o dal suo wrapper "fase-cell".
                         const target = e.target as HTMLElement;
-                        if (target.closest("[data-fase-cell]")) return;
+                        if (target.closest("[data-fase-cell],[data-pdf-cell]")) return;
                         window.location.href = `/preventivi/${q.id}`;
                       }}
                       style={{ cursor: "pointer" }}
@@ -569,6 +573,47 @@ export default function PreventiviPage() {
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td
+                        className="text-center"
+                        data-pdf-cell
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {isManualQuote ? (
+                          <span
+                            className="text-xs"
+                            style={{ color: "var(--mc-text-muted)" }}
+                            title="PDF non disponibile per preventivi manuali"
+                          >
+                            —
+                          </span>
+                        ) : (
+                          <a
+                            href={`/api/quotes/${q.id}/pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center rounded-md p-1.5 transition-colors hover:bg-[var(--mc-bg-elevated)]"
+                            style={{ color: "var(--mc-accent)" }}
+                            title="Scarica / apri PDF"
+                            aria-label={`Scarica PDF preventivo ${q.quoteNumber}`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              aria-hidden="true"
+                            >
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="12" y1="18" x2="12" y2="12" />
+                              <line x1="9" y1="15" x2="15" y2="15" />
+                            </svg>
+                          </a>
+                        )}
                       </td>
                       <td>
                         <span

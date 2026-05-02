@@ -149,7 +149,10 @@ export default function DettaglioPreventivoPage() {
     );
   }
 
-  if (quote.status === "draft") {
+  // Bozze modificabili: draft (standard) o pending (legacy DB / migrazioni).
+  const isEditableDraft = quote.status === "draft" || quote.status === "pending";
+
+  if (isEditableDraft) {
     const initial: QuoteEditorInitialData = {
       id: quote.id,
       status: quote.status,
@@ -216,7 +219,9 @@ export default function DettaglioPreventivoPage() {
           </Link>
           <h1 className="text-2xl sm:text-4xl mb-1">Bozza {quote.quoteNumber}</h1>
           <p className="text-sm italic" style={{ color: "var(--mc-text-secondary)" }}>
-            Tutto editabile finché resta in bozza.
+            {quote.status === "pending"
+              ? "Record in stato legacy “pending”: editabile e inviabile come bozza."
+              : "Tutto editabile finché resta in bozza."}
           </p>
         </div>
 

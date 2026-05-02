@@ -219,6 +219,42 @@ async function fwRegisterOrGetCustomerId(opts: {
   return { customerId: "", raw: lastRaw };
 }
 
+/** Esito chiamata FW360 (non serve far fallire l’invio se la cronologia va giù). */
+async function fwPostForm(
+  label: string,
+  url: string,
+  fwKey: string,
+  body: URLSearchParams
+): Promise<{ ok: boolean; status: number; snippet: string }> {
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-Fw360-Key": fwKey,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+      signal: AbortSignal.timeout(20000),
+    });
+    const text = await r.text().catch(() => "");
+    const snippet = text.replace(/\s+/g, " ").trim().slice(0, 280);
+    if (!r.ok) {
+      console.error(`FW360 ${label} HTTP error`, {
+        status: r.status,
+        snippet,
+      });
+    }
+    return { ok: r.ok, status: r.status, snippet };
+  } catch (e) {
+    console.error(`FW360 ${label} request failed`, { error: e });
+    return {
+      ok: false,
+      status: 0,
+      snippet: e instanceof Error ? e.message.slice(0, 200) : "network error",
+    };
+  }
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
@@ -259,16 +295,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
   }
 
-  if (quote.status !== "draft") {
+  // Stati inviabili: bozza canonica o legacy "pending" (PATCH permette ancora l’edit).
+  const canSend = quote.status === "draft" || quote.status === "pending";
+  if (!canSend) {
     return NextResponse.json({ error: "Preventivo già inviato" }, { status: 400 });
   }
   if (!quote.clientEmail || !quote.clientEmail.trim()) {
     return NextResponse.json({ error: "Email cliente mancante" }, { status: 400 });
   }
 
-  const fwKey = process.env.FW360_API_KEY;
+  // Stesso valore di "Documentazione API - CRM": in .env spesso è salvato come CRM_API_KEY.
+  const fwKey = process.env.FW360_API_KEY || process.env.CRM_API_KEY;
   if (!fwKey) {
-    return NextResponse.json({ error: "FW360_API_KEY mancante" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Chiave API CRM mancante: imposta FW360_API_KEY o CRM_API_KEY" },
+      { status: 500 }
+    );
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
@@ -336,14 +378,16 @@ export async function POST(req: Request) {
     select: { publicPdfToken: true },
   });
   const t = tokenRow?.publicPdfToken || "";
-  const pdfUrl = `${appUrl}/api/public/pdf/${quote.quoteNumber}${t ? `?t=${encodeURIComponent(t)}` : ""}`;
-  await fetch(`${FW360_API_BASE}/customers/history/create`, {
-    method: "POST",
-    headers: {
-      "X-Fw360-Key": fwKey,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
+  const baseApp = appUrl.replace(/\/$/, "");
+  const pdfUrl = `${baseApp}/api/public/pdf/${quote.quoteNumber}${t ? `?t=${encodeURIComponent(t)}` : ""}`;
+
+  const crmWarnings: string[] = [];
+
+  const historyRes = await fwPostForm(
+    "history/create",
+    `${FW360_API_BASE}/customers/history/create`,
+    fwKey,
+    new URLSearchParams({
       customer_id: customerId,
       title:
         "Preventivo " +
@@ -352,28 +396,35 @@ export async function POST(req: Request) {
         escapeHtml(String(quote.clientCompany || quote.clientName || "")),
       content: "Preventivo inviato. <a href=\"" + pdfUrl + "\" target=\"_blank\">Apri PDF</a>",
       date: new Date().toISOString().split("T")[0],
-    }),
-  }).catch((e) => {
-    console.error("FW360 history create failed", { quoteId: locked.id, customerId, error: e });
-  });
+    })
+  );
+  if (!historyRes.ok) {
+    crmWarnings.push(
+      `Cronologia contatto: errore HTTP ${historyRes.status || "?"}${historyRes.snippet ? ` — ${historyRes.snippet}` : ""}`
+    );
+  }
 
-  // Step 5 — Aggiorna campi extra del cliente (per automazione email)
-  await fetch(`${FW360_API_BASE}/customers/update`, {
-    method: "POST",
-    headers: {
-      "X-Fw360-Key": fwKey,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
+  const updateRes = await fwPostForm(
+    "customers/update",
+    `${FW360_API_BASE}/customers/update`,
+    fwKey,
+    new URLSearchParams({
       customer_id: customerId,
       "extraFields[ultimo_preventivo_url]": pdfUrl,
       "extraFields[ultimo_preventivo_numero]": quote.quoteNumber,
       "extraFields[ultimo_preventivo_importo]": String(quote.totalAnnual || quote.totalSetup),
-    }),
-  }).catch((e) => {
-    console.error("FW360 customer update failed", { quoteId: locked.id, customerId, error: e });
-  });
+    })
+  );
+  if (!updateRes.ok) {
+    crmWarnings.push(
+      `Aggiornamento extraFields cliente: errore HTTP ${updateRes.status || "?"}${updateRes.snippet ? ` — ${updateRes.snippet}` : ""}`
+    );
+  }
 
-  // Step 6 — Response
-  return NextResponse.json({ success: true, status: "sent" });
+  // Step 6 — Response (il preventivo è già "sent"; avvisi CRM sono informativi)
+  return NextResponse.json({
+    success: true,
+    status: "sent",
+    ...(crmWarnings.length ? { crmWarnings } : {}),
+  });
 }

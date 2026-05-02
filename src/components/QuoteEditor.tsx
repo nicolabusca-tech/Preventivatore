@@ -739,6 +739,22 @@ export function QuoteEditor({ initial }: Props) {
         return;
       }
 
+      const sentBody = await res.json().catch(() => null);
+      const crmWarnings =
+        sentBody &&
+        typeof sentBody === "object" &&
+        Array.isArray((sentBody as { crmWarnings?: unknown }).crmWarnings)
+          ? (sentBody as { crmWarnings: string[] }).crmWarnings.filter(
+              (w) => typeof w === "string" && w.trim()
+            )
+          : [];
+      if (crmWarnings.length > 0) {
+        window.alert(
+          "Preventivo inviato e bloccato, ma la sincronizzazione con Framework360 potrebbe essere incompleta:\n\n" +
+            crmWarnings.join("\n\n")
+        );
+      }
+
       router.push(`/preventivi/${quoteId}`);
       router.refresh();
     } finally {

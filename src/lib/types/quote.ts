@@ -126,6 +126,8 @@ export type QuoteListItem = {
   costAnnual: number;
   marginAnnual: number;
   marginPercentAnnual: number;
+  /** STANDARD | MANUAL — da Prisma; assente in risposte molto vecchie. */
+  kind?: string;
   status: string;
   salesStage: string;
   deliveryStage: string;

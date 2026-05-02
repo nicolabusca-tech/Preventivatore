@@ -1,5 +1,6 @@
 import { Quote, QuoteItem, User } from "@prisma/client";
 import { prepayFromMonthly, computeCredito } from "@/lib/pricing/engine";
+import { computeCanoniBreakdown } from "@/lib/pdf/canoni-breakdown";
 import { parseRoiSnapshot } from "@/lib/roi";
 import {
   addDays,
@@ -683,49 +684,28 @@ function renderPage6(quote: QuoteWithRelations) {
 
   const setupTotals = computeSetupTotals(quote);
 
-  /** Tutti i canoni addebitati mese per mese (Direzione DCE, CRM se non anticipato, ecc.) — allineato a quote.totalMonthly. */
-  const canoniMensiliRicorrenti =
-    typeof quote.totalMonthly === "number" ? Math.max(0, quote.totalMonthly) : 0;
-
-  const crmMonthlyFromItems = quote.items
-    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_CRM"))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-  const aiMonthlyFromItems = quote.items
-    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_AI"))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-  const waMonthlyFromItems = quote.items
-    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_WA"))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-  const dceMonthlyFromItems = quote.items
-    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("DCE"))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-
-  const crmPrepay =
-    !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0
-      ? prepayFromMonthly(crmMonthlyFromItems, "CRM")
-      : null;
-  const aiPrepay =
-    !!quote.scontoAiVocaleAnnuale && aiMonthlyFromItems > 0
-      ? prepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
-      : null;
-  const waPrepay =
-    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? prepayFromMonthly(waMonthlyFromItems, "WA") : null;
-
-  // Voci visibili nei "canoni mensili" del riepilogo: se il canone è in prepay annuale,
-  // non viene addebitato mese per mese (compare invece nel blocco "annuale anticipato").
-  // Cosi' il cliente vede chiaramente quali servizi pesano ogni mese e con che importo per
-  // categoria. I DCE non hanno prepay e finiscono sempre tra i mensili.
-  const crmMonthlyMostrato = !!quote.scontoCrmAnnuale ? 0 : crmMonthlyFromItems;
-  const aiMonthlyMostrato = !!quote.scontoAiVocaleAnnuale ? 0 : aiMonthlyFromItems;
-  const waMonthlyMostrato = !!quote.scontoWaAnnuale ? 0 : waMonthlyFromItems;
-  const altriMonthlyMostrato = Math.max(
-    0,
-    canoniMensiliRicorrenti -
-      crmMonthlyMostrato -
-      aiMonthlyMostrato -
-      waMonthlyMostrato -
-      dceMonthlyFromItems
-  );
+  // Tutti i canoni addebitati mese per mese (DCE, CRM/AI/WA se non anticipati) +
+  // i tre prepay annuali. Vedi src/lib/pdf/canoni-breakdown.ts per la sorgente unica.
+  const breakdown = computeCanoniBreakdown(quote);
+  const canoniMensiliRicorrenti = breakdown.canoniMensiliRicorrenti;
+  const {
+    crmMonthlyFromItems,
+    aiMonthlyFromItems,
+    waMonthlyFromItems,
+    dceMonthlyFromItems,
+    crmPrepay,
+    aiPrepay,
+    waPrepay,
+    crmMonthlyMostrato,
+    aiMonthlyMostrato,
+    waMonthlyMostrato,
+    altriMonthlyMostrato,
+  } = breakdown;
+  // Silenzia i lint "noUnusedLocals" su variabili che servono come prove di
+  // contratto del breakdown ma non sono direttamente referenziate qui sotto.
+  void crmMonthlyFromItems;
+  void aiMonthlyFromItems;
+  void waMonthlyFromItems;
 
   const crmAnticipatoHtml = crmPrepay
     ? pdfCanoneAnticipatoRows({
@@ -1102,29 +1082,9 @@ function renderPage9Payments(quote: QuoteWithRelations) {
       ? quote.totalSetup + quote.totalMonthly * investimentoMesi
       : quote.totalSetup + quote.totalMonthly * 12;
 
-  const crmMonthlyFromItems = quote.items
-    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_CRM"))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-  const aiMonthlyFromItems = quote.items
-    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_AI"))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-  const waMonthlyFromItems = quote.items
-    .filter((i) => i.isMonthly && typeof i.productCode === "string" && i.productCode.startsWith("CANONE_WA"))
-    .reduce((sum, i) => sum + i.price * (i.quantity || 1), 0);
-
-  const crmPrepay =
-    !!quote.scontoCrmAnnuale && crmMonthlyFromItems > 0
-      ? prepayFromMonthly(crmMonthlyFromItems, "CRM")
-      : null;
-  const aiPrepay =
-    !!quote.scontoAiVocaleAnnuale && aiMonthlyFromItems > 0
-      ? prepayFromMonthly(aiMonthlyFromItems, "AIVOCALE")
-      : null;
-  const waPrepay =
-    !!quote.scontoWaAnnuale && waMonthlyFromItems > 0 ? prepayFromMonthly(waMonthlyFromItems, "WA") : null;
-
-  const canoniAnticipatiAllaFirma =
-    (crmPrepay?.netOneTime ?? 0) + (aiPrepay?.netOneTime ?? 0) + (waPrepay?.netOneTime ?? 0);
+  // Stessa sorgente unica usata nella sezione 07: vedi src/lib/pdf/canoni-breakdown.ts.
+  const breakdown = computeCanoniBreakdown(quote);
+  const canoniAnticipatiAllaFirma = breakdown.canoniAnticipatiAllaFirma;
 
   const oggiStandard = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
   const oggiAnticipato = Math.round(totalePeriodo * 0.95);

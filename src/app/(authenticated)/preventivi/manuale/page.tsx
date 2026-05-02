@@ -525,7 +525,8 @@ export default function PreventivoManualePage() {
 
         {/* Sidebar totali */}
         <div className="lg:col-span-1 lg:self-start">
-          <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-auto lg:overscroll-contain">
+          {/* Sticky sotto la navbar h-14: top-20 evita la sovrapposizione. */}
+          <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-auto lg:overscroll-contain">
             <div className="card p-5 space-y-4">
               <div>
                 <div

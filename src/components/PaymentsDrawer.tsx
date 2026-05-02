@@ -275,7 +275,7 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
               )}
               <div className="text-xs mt-1 tabular-nums" style={{ color: "var(--mc-text-secondary)" }}>
                 Setup {formatEuro(quote.totalSetup || 0)} · Canone {formatEuro(quote.totalMonthly || 0)}/mese · Anno 1{" "}
-                <strong>{formatEuro((quote.totalSetup || 0) + (quote.totalAnnual || 0))}</strong>
+                <strong>{formatEuro(quote.totalAnnual || 0)}</strong>
               </div>
             </div>
             <button type="button" className="btn-ghost text-sm px-2 py-1" onClick={onClose} disabled={busy}>

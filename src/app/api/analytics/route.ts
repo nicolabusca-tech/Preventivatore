@@ -191,7 +191,10 @@ export async function GET(req: Request) {
     const d = new Date(q.wonAt);
     if (Number.isNaN(d.getTime())) continue;
     if (!earliestWon || d < earliestWon) earliestWon = d;
-    const value = (q.totalSetup || 0) + (q.effectiveRevenueAnnual || q.totalAnnual || 0);
+    // Vedi nota in analisi/page.tsx:valoreContratto. totalSetup salvato a DB
+    // è oneTimeTotal e si trova già dentro totalAnnual: sommarli duplicava il
+    // setup nei punti di acquisito cumulativo per mese.
+    const value = q.effectiveRevenueAnnual || q.totalAnnual || 0;
     const k = monthKey(d);
     acquiredByMonth.set(k, (acquiredByMonth.get(k) || 0) + value);
   }

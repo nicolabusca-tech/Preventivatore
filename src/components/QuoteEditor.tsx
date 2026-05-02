@@ -182,6 +182,7 @@ export function QuoteEditor({ initial }: Props) {
   // In alcune navigazioni Next può riusare l'istanza del componente (cache/back/soft nav).
   // In quel caso, se passi da "bozza" a "nuovo", dobbiamo resettare lo stato locale.
   const initialId = initial?.id ?? null;
+  const pdfDisabledByKind = initial?.kind === "MANUAL";
   useEffect(() => {
     setError("");
     setSavingDraft(false);
@@ -1229,7 +1230,10 @@ export function QuoteEditor({ initial }: Props) {
       </div>
 
       <div className="lg:col-span-1 lg:self-start">
-        <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-auto lg:overscroll-contain">
+        {/* Sticky sotto la navbar (h-14 = 56px). top-20 = 80px lascia 24px di
+           aria fra navbar e sidebar; max-h calcolato in modo speculare per non
+           tagliare il bottone "Invia" quando la sidebar è più alta del viewport. */}
+        <div className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-auto lg:overscroll-contain">
           <div className="card p-5 space-y-4">
           {/* (Sidebar totals e ROI: manteniamo le stesse classi/stili già usate in pagina nuovo) */}
 
@@ -1525,25 +1529,94 @@ export function QuoteEditor({ initial }: Props) {
             {savingDraft ? "Salvataggio..." : "Salva bozza"}
           </button>
 
-          {quoteId && clientEmail.trim() && (
-            <button
-              type="button"
-              onClick={() => void sendQuote()}
-              disabled={sending}
-              className="w-full font-semibold rounded-lg px-4 py-3 transition-all"
-              style={{
-                background: "#FF6A00",
-                color: "white",
-                border: "1px solid rgba(0,0,0,0.06)",
-                opacity: sending ? 0.8 : 1,
-              }}
-            >
-              {sending ? "Invio..." : "Invia preventivo"}
-            </button>
+          {/* Stampa PDF: sempre visibile (tranne preventivi manuali, che non hanno PDF di listino).
+             Disabilitato finché non c'è una bozza salvata, così il commerciale capisce che il PDF
+             esiste e cosa serve fare per generarlo. */}
+          {!pdfDisabledByKind && (
+            <>
+              {quoteId ? (
+                <a
+                  href={`/api/quotes/${quoteId}/pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary w-full text-center block"
+                >
+                  Stampa / scarica PDF
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="btn-secondary w-full text-center block"
+                  style={{ opacity: 0.5, cursor: "not-allowed" }}
+                  title="Salva la bozza per generare il PDF di anteprima"
+                >
+                  Stampa / scarica PDF
+                </button>
+              )}
+              {quoteId && hasUnsavedChanges && (
+                <p className="text-[11px] text-center leading-snug" style={{ color: "var(--mc-accent)" }}>
+                  Salva la bozza prima di stampare così il PDF riflette le ultime modifiche.
+                </p>
+              )}
+              {!quoteId && (
+                <p className="text-[11px] text-center leading-snug" style={{ color: "var(--mc-text-muted)" }}>
+                  Salva la bozza per generare il PDF di anteprima.
+                </p>
+              )}
+            </>
           )}
 
+          {quoteId && pdfDisabledByKind && (
+            <p className="text-[11px] text-center" style={{ color: "var(--mc-text-muted)" }}>
+              PDF listino non disponibile per preventivi manuali.
+            </p>
+          )}
+
+          {/* Invia preventivo: sempre visibile (tranne preventivi manuali). Disabilitato finché non
+             ci sono bozza salvata + email cliente. Hint sotto spiega cosa manca. */}
+          {!pdfDisabledByKind && (() => {
+            const missingDraft = !quoteId;
+            const missingEmail = !clientEmail.trim();
+            const canSend = !missingDraft && !missingEmail;
+            const hint = missingDraft
+              ? "Salva la bozza per abilitare l'invio al cliente."
+              : missingEmail
+                ? "Aggiungi un'email cliente per poter inviare il preventivo."
+                : "";
+            return (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void sendQuote()}
+                  disabled={sending || !canSend}
+                  className="w-full font-semibold rounded-lg px-4 py-3 transition-all"
+                  style={{
+                    background: "#FF6A00",
+                    color: "white",
+                    border: "1px solid rgba(0,0,0,0.06)",
+                    opacity: sending || !canSend ? 0.5 : 1,
+                    cursor: !canSend && !sending ? "not-allowed" : "pointer",
+                  }}
+                  title={hint || undefined}
+                >
+                  {sending ? "Invio..." : "Invia preventivo"}
+                </button>
+                {hint && (
+                  <p className="text-[11px] text-center leading-snug" style={{ color: "var(--mc-text-muted)" }}>
+                    {hint}
+                  </p>
+                )}
+              </>
+            );
+          })()}
+
           <p className="text-xs text-center" style={{ color: "var(--mc-text-muted)" }}>
-            {quoteId ? (hasUnsavedChanges ? "Hai modifiche non salvate." : "Bozza salvata.") : "Salva la bozza per ottenere il PDF e inviare al cliente."}
+            {quoteId
+              ? hasUnsavedChanges
+                ? "Hai modifiche non salvate."
+                : "Bozza salvata: puoi stampare il PDF e inviare al cliente."
+              : "Salva la bozza almeno una volta per ottenere il PDF e poter inviare al cliente."}
           </p>
           </div>
         </div>

@@ -6,6 +6,8 @@ import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 import { computeQuoteCosts } from "@/lib/costs";
 import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
+import { DuplicateQuoteSchema, badRequestFromZod } from "@/lib/quotes/schemas";
+import { ZodError } from "zod";
 
 function buildNextQuoteNumber(prev: string | null, year: number) {
   const prefix = `Q${year}-`;
@@ -25,11 +27,16 @@ export async function POST(req: Request) {
 
   await ensureQuoteSchema();
 
-  const body = await req.json().catch(() => null);
-  const quoteId = body?.quoteId;
-  if (typeof quoteId !== "string" || !quoteId.trim()) {
-    return NextResponse.json({ error: "quoteId mancante" }, { status: 400 });
+  let parsed: { quoteId: string };
+  try {
+    parsed = DuplicateQuoteSchema.parse(await req.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return NextResponse.json(badRequestFromZod(e), { status: 400 });
+    }
+    return NextResponse.json({ error: "Payload non leggibile" }, { status: 400 });
   }
+  const quoteId = parsed.quoteId;
 
   const source = await prisma.quote.findUnique({
     where: { id: quoteId },

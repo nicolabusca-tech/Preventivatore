@@ -6,6 +6,8 @@ import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
 import { assertCsrf } from "@/lib/security/csrf";
 import { computeQuoteCosts } from "@/lib/costs";
 import { loadQuoteDetailById } from "@/lib/quotes/serialize-quote-detail";
+import { CreateQuoteSchema, badRequestFromZod } from "@/lib/quotes/schemas";
+import { ZodError } from "zod";
 
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
@@ -29,7 +31,17 @@ export async function POST(req: Request) {
 
   await ensureQuoteSchema();
 
-  const data = await req.json();
+  // Validazione Zod del payload: se manca un campo obbligatorio o un tipo è
+  // sbagliato, restituiamo 400 con messaggi leggibili invece di un 500.
+  let data: import("@/lib/quotes/schemas").CreateQuotePayload;
+  try {
+    data = CreateQuoteSchema.parse(await req.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return NextResponse.json(badRequestFromZod(e), { status: 400 });
+    }
+    return NextResponse.json({ error: "Payload non leggibile (JSON malformato)" }, { status: 400 });
+  }
   const {
     clientName,
     clientCompany,

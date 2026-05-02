@@ -47,7 +47,7 @@ function toAnalyticsQuote(q: EnrichedQuote): AnalyticsQuote {
     clientCompany: q.clientCompany,
     createdAt: q.createdAt.toISOString(),
     user: { name: q.user.name },
-    totalSetup: q.totalSetup,
+    totalOneTime: q.totalOneTime,
     totalMonthly: q.totalMonthly,
     totalAnnual: q.totalAnnual,
     costAnnual: q.costAnnual,
@@ -191,7 +191,7 @@ export async function GET(req: Request) {
     const d = new Date(q.wonAt);
     if (Number.isNaN(d.getTime())) continue;
     if (!earliestWon || d < earliestWon) earliestWon = d;
-    // Vedi nota in analisi/page.tsx:valoreContratto. totalSetup salvato a DB
+    // Vedi nota in analisi/page.tsx:valoreContratto. totalOneTime salvato a DB
     // è oneTimeTotal e si trova già dentro totalAnnual: sommarli duplicava il
     // setup nei punti di acquisito cumulativo per mese.
     const value = q.effectiveRevenueAnnual || q.totalAnnual || 0;

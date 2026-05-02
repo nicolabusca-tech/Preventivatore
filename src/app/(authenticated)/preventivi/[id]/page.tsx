@@ -601,7 +601,7 @@ export default function DettaglioPreventivoPage() {
                           Subtotale setup
                         </span>
                         <span className="font-semibold tabular-nums">
-                          {formatEuro(quote.setupBeforeDiscount || quote.totalSetup)}
+                          {formatEuro(quote.setupBeforeDiscount || quote.totalOneTime)}
                         </span>
                       </div>
                       {quote.discountAmount > 0 &&
@@ -729,7 +729,7 @@ export default function DettaglioPreventivoPage() {
           <div className="card p-5">
             <div className="label">Una tantum (alla firma)</div>
             <div className="text-2xl font-bold tabular-nums mt-0.5">
-              {formatEuro(quote.totalSetup)}
+              {formatEuro(quote.totalOneTime)}
             </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs">

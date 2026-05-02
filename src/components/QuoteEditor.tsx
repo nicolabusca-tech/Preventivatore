@@ -640,7 +640,7 @@ export function QuoteEditor({ initial }: Props) {
       voucherAuditApplied,
       notes: notes.trim() || null,
       expiresAt,
-      totalSetup: totals.oneTimeTotal,
+      totalOneTime: totals.oneTimeTotal,
       totalMonthly: totals.monthlyAfterPrepay,
       totalAnnual: totals.annualTotal,
       setupBeforeDiscount: totals.setupGross,

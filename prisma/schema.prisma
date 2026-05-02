@@ -99,7 +99,11 @@ model Quote {
   roiSnapshot           String?
   clientVat             String?
   clientSdi             String?
-  totalSetup            Int
+  // Storicamente chiamato totalSetup ma in realta' contiene oneTimeTotal
+  // dal pricing engine: setup netto + tutti i prepay annuali (CRM/AI/WA).
+  // Rinominato in totalOneTime per chiarezza, con @map("totalSetup") per
+  // restare retro-compatibile col DB esistente (zero migration richiesta).
+  totalOneTime          Int                @map("totalSetup")
   totalMonthly          Int
   totalAnnual           Int
   costSetup             Int         @default(0)

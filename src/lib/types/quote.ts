@@ -84,7 +84,7 @@ export type QuoteDetail = {
   roiMargineCommessa: number | null;
   roiSnapshot: string | null;
   notes: string | null;
-  totalSetup: number;
+  totalOneTime: number;
   totalMonthly: number;
   totalAnnual: number;
   costSetup: number;
@@ -122,7 +122,7 @@ export type QuoteListItem = {
   quoteNumber: string;
   clientName: string;
   clientCompany: string | null;
-  totalSetup: number;
+  totalOneTime: number;
   totalMonthly: number;
   totalAnnual: number;
   costAnnual: number;

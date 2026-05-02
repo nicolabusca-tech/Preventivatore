@@ -43,7 +43,7 @@ async function main() {
     }),
     clientVat: null,
     clientSdi: null,
-    totalSetup: 16973,
+    totalOneTime: 16973,
     totalMonthly: 149,
     totalAnnual: 19828,
     costSetup: 0,

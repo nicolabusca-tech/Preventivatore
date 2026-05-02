@@ -40,7 +40,7 @@ const quote = {
   }),
   clientVat: null,
   clientSdi: null,
-  totalSetup: 20779,
+  totalOneTime: 20779,
   totalMonthly: 0,
   totalAnnual: 23105,
   costSetup: 0,

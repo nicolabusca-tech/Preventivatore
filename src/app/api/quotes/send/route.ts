@@ -284,7 +284,7 @@ export async function POST(req: Request) {
       clientEmail: true,
       clientPhone: true,
       totalAnnual: true,
-      totalSetup: true,
+      totalOneTime: true,
       status: true,
       crmCustomerId: true,
     },
@@ -412,7 +412,7 @@ export async function POST(req: Request) {
       customer_id: customerId,
       "extraFields[ultimo_preventivo_url]": pdfUrl,
       "extraFields[ultimo_preventivo_numero]": quote.quoteNumber,
-      "extraFields[ultimo_preventivo_importo]": String(quote.totalAnnual || quote.totalSetup),
+      "extraFields[ultimo_preventivo_importo]": String(quote.totalAnnual || quote.totalOneTime),
     })
   );
   if (!updateRes.ok) {

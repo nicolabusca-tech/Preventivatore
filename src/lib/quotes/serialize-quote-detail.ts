@@ -51,7 +51,7 @@ export function toQuoteDetail(quote: QuoteDetailDb): QuoteDetail {
     roiMargineCommessa: quote.roiMargineCommessa,
     roiSnapshot: quote.roiSnapshot,
     notes: quote.notes,
-    totalSetup: quote.totalSetup,
+    totalOneTime: quote.totalOneTime,
     totalMonthly: quote.totalMonthly,
     totalAnnual: quote.totalAnnual,
     costSetup: quote.costSetup,

@@ -146,7 +146,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             notes: data.notes ?? null,
             expiresAt: data.expiresAt ? new Date(data.expiresAt) : quote.expiresAt,
             voucherAuditApplied: !!data.voucherAuditApplied,
-            totalSetup: Number(data.totalSetup || 0),
+            totalOneTime: Number(data.totalOneTime || 0),
             totalMonthly: Number(data.totalMonthly || 0),
             totalAnnual: Number(data.totalAnnual || 0),
             setupBeforeDiscount: Number(data.setupBeforeDiscount || 0),

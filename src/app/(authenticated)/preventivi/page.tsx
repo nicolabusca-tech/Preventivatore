@@ -602,7 +602,7 @@ export default function PreventiviPage() {
                         )}
                       </td>
                       <td className="text-right text-sm tabular-nums">
-                        {formatEuro(q.totalSetup)}
+                        {formatEuro(q.totalOneTime)}
                       </td>
                       <td
                         className="text-right text-sm tabular-nums"

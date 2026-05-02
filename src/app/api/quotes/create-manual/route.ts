@@ -97,9 +97,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const totalSetup = cleanedLines.filter((l) => !l.isMonthly).reduce((s, l) => s + l.amount, 0);
+  const totalOneTime = cleanedLines.filter((l) => !l.isMonthly).reduce((s, l) => s + l.amount, 0);
   const totalMonthly = cleanedLines.filter((l) => l.isMonthly).reduce((s, l) => s + l.amount, 0);
-  const totalAnnual = totalSetup + totalMonthly * 12;
+  const totalAnnual = totalOneTime + totalMonthly * 12;
 
   const costSetup = cleanedLines.filter((l) => !l.isMonthly).reduce((s, l) => s + l.cost, 0);
   const costMonthly = cleanedLines.filter((l) => l.isMonthly).reduce((s, l) => s + l.cost, 0);
@@ -172,10 +172,10 @@ export async function POST(req: Request) {
             roiSnapshot: null,
             notes: trimOrNull(data.notes),
             expiresAt,
-            totalSetup,
+            totalOneTime,
             totalMonthly,
             totalAnnual,
-            setupBeforeDiscount: totalSetup,
+            setupBeforeDiscount: totalOneTime,
             discountType: null,
             discountAmount: 0,
             discountCode: null,

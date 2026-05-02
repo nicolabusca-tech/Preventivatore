@@ -84,7 +84,7 @@ export async function POST(req: Request) {
           roiSnapshot: source.roiSnapshot,
           clientVat: source.clientVat,
           clientSdi: source.clientSdi,
-          totalSetup: source.totalSetup,
+          totalOneTime: source.totalOneTime,
           totalMonthly: source.totalMonthly,
           totalAnnual: source.totalAnnual,
           setupBeforeDiscount: source.setupBeforeDiscount,

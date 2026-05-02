@@ -14,7 +14,7 @@ export type DrawerQuote = {
   quoteNumber: string;
   clientName: string;
   clientCompany: string | null;
-  totalSetup: number;
+  totalOneTime: number;
   totalMonthly: number;
   totalAnnual: number;
   wonAt: string | null;

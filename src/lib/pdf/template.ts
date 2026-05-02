@@ -79,7 +79,7 @@ function pdfCanoneAnticipatoRows(args: {
 }
 
 function computeSetupTotals(quote: QuoteWithRelations) {
-  const setupBefore = quote.setupBeforeDiscount || quote.totalSetup;
+  const setupBefore = quote.setupBeforeDiscount || quote.totalOneTime;
   const voucherDiagnosi = quote.diagnosiGiaPagata ? DIAGNOSI_VOUCHER_AMOUNT : 0;
 
   const baseAfterVoucher = Math.max(0, setupBefore - voucherDiagnosi);
@@ -95,9 +95,9 @@ function computeSetupTotals(quote: QuoteWithRelations) {
   // Storico volume_*: lo sconto non era applicato al totale setup in fattura preventivo.
   const discountAmount = isVolumeLegacy ? 0 : rawDiscountFromQuote;
 
-  let totalSetup = baseAfterVoucher - discountAmount;
-  if (quote.voucherAuditApplied) totalSetup -= 147;
-  if (totalSetup < 0) totalSetup = 0;
+  let totalOneTime = baseAfterVoucher - discountAmount;
+  if (quote.voucherAuditApplied) totalOneTime -= 147;
+  if (totalOneTime < 0) totalOneTime = 0;
 
   const grossSetupModuli = Math.max(0, Math.round(Number(quote.setupBeforeDiscount) || 0));
   const creditoMetodoCantiere = computeCredito({
@@ -113,7 +113,7 @@ function computeSetupTotals(quote: QuoteWithRelations) {
     setupBefore,
     voucherDiagnosi,
     discountAmount,
-    totalSetup,
+    totalOneTime,
     creditoMetodoCantiere,
   };
 }
@@ -680,7 +680,7 @@ function renderPage6(quote: QuoteWithRelations) {
   const primoAnnoCompleto =
     typeof quote.totalAnnual === "number" && quote.totalAnnual > 0
       ? quote.totalAnnual
-      : quote.totalSetup + quote.totalMonthly * 12;
+      : quote.totalOneTime + quote.totalMonthly * 12;
 
   const setupTotals = computeSetupTotals(quote);
 
@@ -741,7 +741,7 @@ function renderPage6(quote: QuoteWithRelations) {
     : "";
 
   const direttoreCosto = escapeHtml(formatEuro(primoAnnoCompleto));
-  const stripeSetupSconto = Math.round(setupTotals.totalSetup * 0.97);
+  const stripeSetupSconto = Math.round(setupTotals.totalOneTime * 0.97);
   const anticipatoSconto = Math.round(primoAnnoCompleto * 0.95);
   const discountLabel = getDiscountLabel(quote);
 
@@ -804,7 +804,7 @@ function renderPage6(quote: QuoteWithRelations) {
           <tr>
             <td style="border-bottom:none;color:rgba(250,248,244,0.75)">Totale setup</td>
             <td class="right" style="border-bottom:none"><span class="display" style="font-style:italic;font-size:24pt;color:var(--mc-orange)">${escapeHtml(
-              formatEuro(setupTotals.totalSetup)
+              formatEuro(setupTotals.totalOneTime)
             )}</span></td>
           </tr>
           <tr><td colspan="2" style="border-bottom:none;height:4mm"></td></tr>
@@ -1078,17 +1078,17 @@ function renderPage9Payments(quote: QuoteWithRelations) {
   const investimentoMesi = roiSnap?.investimentoOrizzonteMesi ?? 12;
 
   const totalePeriodo =
-    typeof quote.totalSetup === "number" && typeof quote.totalMonthly === "number"
-      ? quote.totalSetup + quote.totalMonthly * investimentoMesi
-      : quote.totalSetup + quote.totalMonthly * 12;
+    typeof quote.totalOneTime === "number" && typeof quote.totalMonthly === "number"
+      ? quote.totalOneTime + quote.totalMonthly * investimentoMesi
+      : quote.totalOneTime + quote.totalMonthly * 12;
 
   // Stessa sorgente unica usata nella sezione 07: vedi src/lib/pdf/canoni-breakdown.ts.
   const breakdown = computeCanoniBreakdown(quote);
   const canoniAnticipatiAllaFirma = breakdown.canoniAnticipatiAllaFirma;
 
-  const oggiStandard = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
+  const oggiStandard = Math.round(setupTotals.totalOneTime + canoniAnticipatiAllaFirma);
   const oggiAnticipato = Math.round(totalePeriodo * 0.95);
-  const rateBase = Math.round(setupTotals.totalSetup + canoniAnticipatiAllaFirma);
+  const rateBase = Math.round(setupTotals.totalOneTime + canoniAnticipatiAllaFirma);
   const rateOggi30 = Math.round(rateBase * 0.3);
   const rateResto70 = Math.max(0, rateBase - rateOggi30);
   const totaleEtichetta = investimentoMesi === 6 ? "Totale 6 mesi" : "Totale primo anno";

@@ -57,8 +57,8 @@ function parseInputDateToIso(s: string): string | null {
 function valoreContratto(q: AnalyticsQuote) {
   // totalAnnual è già il valore del 1° anno comprensivo di setup, anticipi
   // annuali e canoni residui x12 (vedi pricing/engine.ts: annualTotal =
-  // oneTimeTotal + monthlyAfterPrepay*12). Sommare anche totalSetup
-  // duplicava il setup, perché totalSetup salvato a DB è oneTimeTotal,
+  // oneTimeTotal + monthlyAfterPrepay*12). Sommare anche totalOneTime
+  // duplicava il setup, perché totalOneTime salvato a DB è oneTimeTotal,
   // già incluso in totalAnnual. Lasciamo che effectiveRevenueAnnual abbia
   // la precedenza (include eventuali QuoteAdjustment di tipo "revenue").
   return q.effectiveRevenueAnnual || q.totalAnnual || 0;
@@ -196,7 +196,7 @@ export default function AnalisiPage() {
       quoteNumber: q.quoteNumber,
       clientName: q.clientName,
       clientCompany: q.clientCompany,
-      totalSetup: q.totalSetup || 0,
+      totalOneTime: q.totalOneTime || 0,
       totalMonthly: q.totalMonthly || 0,
       totalAnnual: q.totalAnnual || 0,
       wonAt: q.wonAt,

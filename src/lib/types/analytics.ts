@@ -11,7 +11,7 @@ export type AnalyticsQuote = {
   clientCompany: string | null;
   createdAt: string;
   user: { name: string };
-  totalSetup: number;
+  totalOneTime: number;
   totalMonthly: number;
   totalAnnual: number;
   costAnnual: number;

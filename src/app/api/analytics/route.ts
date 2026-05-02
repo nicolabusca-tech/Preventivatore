@@ -108,10 +108,14 @@ export async function GET(req: Request) {
   };
   if (!isAdmin) where.userId = userId;
 
+  // Cap di sicurezza: oltre 2000 preventivi nel range il calcolo e' sospetto e
+  // puo' far timeoutare il deploy su Vercel functions. La UI di Analisi ha gia'
+  // i filtri di range; se mai si arrivera' a piu' di 2000 si rifa' come stream.
   const quotes = await prisma.quote.findMany({
     where,
     include: analyticsInclude,
     orderBy: { createdAt: "desc" },
+    take: 2000,
   });
 
   const enrichedQuotes: EnrichedQuote[] = quotes.map((q) => {

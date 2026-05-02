@@ -17,10 +17,47 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
 
+    // Paginazione opzionale, retro-compatibile: se page/limit non sono
+    // passati, ritorniamo tutto come prima (max 500 per evitare runaway).
+    const pageParam = Number(searchParams.get("page") || "0");
+    const limitParam = Number(searchParams.get("limit") || "0");
+    const page = Number.isFinite(pageParam) && pageParam > 0 ? Math.floor(pageParam) : 0;
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(Math.floor(limitParam), 200)
+      : 0;
+    const q = (searchParams.get("q") || "").trim();
+
     const where: any = {};
     if (!isAdmin) where.userId = userId;
     if (status && status !== "all") where.status = status;
+    if (q) {
+      where.OR = [
+        { quoteNumber: { contains: q, mode: "insensitive" } },
+        { clientName: { contains: q, mode: "insensitive" } },
+        { clientCompany: { contains: q, mode: "insensitive" } },
+      ];
+    }
 
+    // Modalità paginata: ritorna { rows, total, page, limit }.
+    if (limit > 0) {
+      const skip = page > 0 ? (page - 1) * limit : 0;
+      const [rows, total] = await Promise.all([
+        prisma.quote.findMany({
+          where,
+          include: {
+            user: { select: { name: true } },
+            items: { select: { id: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        }),
+        prisma.quote.count({ where }),
+      ]);
+      return NextResponse.json({ rows, total, page: page || 1, limit });
+    }
+
+    // Modalità legacy: tutto (capped a 500 di sicurezza).
     const quotes = await prisma.quote.findMany({
       where,
       include: {
@@ -28,6 +65,7 @@ export async function GET(req: Request) {
         items: { select: { id: true } },
       },
       orderBy: { createdAt: "desc" },
+      take: 500,
     });
 
     return NextResponse.json(quotes);

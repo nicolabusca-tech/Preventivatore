@@ -6,12 +6,20 @@ import { assertCsrf } from "@/lib/security/csrf";
 import {
   PAYMENT_KIND,
   buildDefaultPaymentPlan,
+  buildCustomPaymentPlan,
   paymentRowsToCreateMany,
+  type CustomPlanInput,
 } from "@/lib/quote-payment-plan";
+
+function addMonthsStartOfDay(d: Date, months: number): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+  x.setMonth(x.getMonth() + months);
+  return x;
+}
 import { toQuotePaymentJson } from "@/lib/quotes/serialize-nested";
 import type { GeneratePlanResponseJson } from "@/lib/types/quote-nested";
 
-type Scope = "all" | "monthly";
+type Scope = "all" | "monthly" | "custom";
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -23,7 +31,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const payload = await req.json().catch(() => ({}));
-  const scope: Scope = payload?.scope === "monthly" ? "monthly" : "all";
+  const scope: Scope = payload?.scope === "monthly"
+    ? "monthly"
+    : payload?.scope === "custom"
+      ? "custom"
+      : "all";
   const replaceExisting = payload?.replaceExisting !== false;
 
   const quote = await prisma.quote.findUnique({
@@ -81,6 +93,97 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const deliveryForPlan = deliveryExpectedAt ?? acquisitionDate;
+
+  // ============================================================
+  // Modalita' "custom": il commerciale ha definito un piano nel drawer
+  // (acconto libero in € o %, N rate del saldo, prima data, metodi).
+  // I canoni mensili e gli anticipi annuali vengono comunque generati
+  // automaticamente come prima per non rompere il pattern.
+  // ============================================================
+  if (scope === "custom") {
+    const cp = payload?.customPlan;
+    if (!cp || typeof cp !== "object") {
+      return NextResponse.json({ error: "customPlan mancante" }, { status: 400 });
+    }
+    // Default: split solo il setup (totalOneTime - prepay annuali NON sono da rateizzare,
+    // sono pagamenti separati).
+    const totalToSplit = typeof cp.totalToSplit === "number" && cp.totalToSplit >= 0
+      ? Math.round(cp.totalToSplit)
+      : Math.round(quote.totalOneTime || 0);
+    const numInstallments = Math.max(0, Math.min(60, Math.floor(Number(cp.numInstallments) || 0)));
+    const depositMode = cp.deposit?.mode === "percent" ? "percent" : "amount";
+    const depositValue = Number(
+      depositMode === "percent" ? cp.deposit?.percent : cp.deposit?.amount
+    ) || 0;
+    const customInput: CustomPlanInput = {
+      totalToSplit,
+      deposit: depositMode === "percent"
+        ? { mode: "percent", percent: depositValue }
+        : { mode: "amount", amount: depositValue },
+      depositDate: cp.depositDate ? new Date(String(cp.depositDate)) : acquisitionDate,
+      depositMethod: cp.depositMethod === "card" ? "card" : cp.depositMethod === "bank" ? "bank" : undefined,
+      numInstallments,
+      firstInstallmentDate: cp.firstInstallmentDate
+        ? new Date(String(cp.firstInstallmentDate))
+        : addMonthsStartOfDay(acquisitionDate, 1),
+      installmentDates: Array.isArray(cp.installmentDates)
+        ? cp.installmentDates.map((s: unknown) => new Date(String(s)))
+        : undefined,
+      installmentMethods: Array.isArray(cp.installmentMethods)
+        ? cp.installmentMethods.map((m: unknown) => (m === "card" ? "card" : "bank"))
+        : undefined,
+      methodThreshold: typeof cp.methodThreshold === "number" ? cp.methodThreshold : undefined,
+    };
+
+    const customResult = buildCustomPaymentPlan(customInput);
+
+    // Aggiungo i canoni mensili (se ce ne sono) usando il generatore default
+    // ma estraendo solo le righe MONTHLY_CANONE.
+    const defaultRows = buildDefaultPaymentPlan({
+      quote: { ...quote, depositPercent },
+      items: quote.items,
+      productsByCode,
+      acquisitionDate,
+      deliveryExpectedAt: deliveryForPlan,
+      depositPercent,
+    });
+    const monthlyCanoneRows = defaultRows.filter((r) => r.kind === PAYMENT_KIND.MONTHLY_CANONE);
+    const prepayRows = defaultRows.filter((r) =>
+      r.kind === PAYMENT_KIND.PREPAY_CRM ||
+      r.kind === PAYMENT_KIND.PREPAY_AIVOCALE ||
+      r.kind === PAYMENT_KIND.PREPAY_WA
+    );
+    const allCustomRows = [...customResult.rows, ...prepayRows, ...monthlyCanoneRows];
+
+    const created = await prisma.$transaction(async (tx) => {
+      await tx.quote.update({
+        where: { id: quote.id },
+        data: {
+          deliveryExpectedAt,
+          depositPercent,
+          wonAt: explicitAcquisition ? acquisitionDate : quote.wonAt ?? acquisitionDate,
+        },
+      });
+      if (replaceExisting) {
+        await tx.quotePayment.deleteMany({ where: { quoteId: quote.id } });
+      }
+      const data = paymentRowsToCreateMany(quote.id, allCustomRows);
+      if (data.length > 0) {
+        await tx.quotePayment.createMany({ data });
+      }
+      return tx.quotePayment.findMany({
+        where: { quoteId: quote.id },
+        orderBy: { dueDate: "asc" },
+      });
+    });
+
+    const response: GeneratePlanResponseJson = {
+      payments: created.map(toQuotePaymentJson),
+      plannedCount: created.length,
+      scope: "all",
+    };
+    return NextResponse.json(response);
+  }
 
   const fullRows = buildDefaultPaymentPlan({
     quote: { ...quote, depositPercent },

@@ -12,7 +12,131 @@ export const PAYMENT_KIND = {
   PREPAY_AIVOCALE: "PREPAY_AIVOCALE",
   PREPAY_WA: "PREPAY_WA",
   MONTHLY_CANONE: "MONTHLY_CANONE",
+  /** Rata del saldo dopo l'acconto, in piano pagamenti custom. */
+  INSTALLMENT: "INSTALLMENT",
 } as const;
+
+/** Metodi di pagamento standardizzati. */
+export const PAYMENT_METHOD = {
+  BANK: "bank",
+  CARD: "card",
+} as const;
+
+/** Soglia default sopra la quale il metodo proposto e' bonifico, sotto carta. */
+export const PAYMENT_METHOD_THRESHOLD_EUR = 500;
+
+export type PaymentMethod = typeof PAYMENT_METHOD[keyof typeof PAYMENT_METHOD];
+
+function suggestMethod(amount: number, threshold = PAYMENT_METHOD_THRESHOLD_EUR): PaymentMethod {
+  return amount >= threshold ? PAYMENT_METHOD.BANK : PAYMENT_METHOD.CARD;
+}
+
+/**
+ * Input per buildCustomPaymentPlan: descrive il piano "manuale" che il
+ * commerciale costruisce nel drawer (acconto + N rate del saldo + canoni
+ * mensili che restano automatici).
+ */
+export type CustomPlanInput = {
+  /** Totale del setup da rateizzare (al netto di anticipi annuali e voucher).
+   * Tipicamente quote.totalOneTime - sum(anticipi annuali). */
+  totalToSplit: number;
+  /** Acconto: importo libero in € oppure % sul totalToSplit. */
+  deposit:
+    | { mode: "amount"; amount: number }
+    | { mode: "percent"; percent: number };
+  /** Data dell'acconto. */
+  depositDate: Date;
+  /** Metodo dell'acconto (override del default suggerito). */
+  depositMethod?: PaymentMethod;
+  /** Numero di rate per il saldo (dopo l'acconto). */
+  numInstallments: number;
+  /** Data della prima rata. Le successive sono +1 mese ciascuna se autoReplicateMonthly e' true. */
+  firstInstallmentDate: Date;
+  /** Date custom per le singole rate (se non si vuole replica mensile automatica).
+   *  Se presente e ha length === numInstallments, le date qui dentro sostituiscono il default mensile. */
+  installmentDates?: Date[];
+  /** Soglia per autoselezione metodo (default PAYMENT_METHOD_THRESHOLD_EUR). */
+  methodThreshold?: number;
+  /** Override metodo per ogni rata. Se presente e ha length === numInstallments, vince. */
+  installmentMethods?: PaymentMethod[];
+};
+
+export type CustomPlanResult = {
+  rows: PlanRowInput[];
+  /** Acconto calcolato (importo finale). */
+  depositAmount: number;
+  /** Saldo totale dopo acconto. */
+  remainder: number;
+  /** Importo "tipico" della rata (le prime N-1; l'ultima e' adjusted per pareggiare). */
+  installmentBase: number;
+  /** Importo dell'ultima rata (potrebbe differire di pochi euro per arrotondamento). */
+  installmentLast: number;
+};
+
+/**
+ * Costruisce un piano pagamenti su misura: acconto in €/% + N rate del saldo
+ * con auto-replica mensile e arrotondamento sull'ultima rata cosi' tornano gli interi.
+ *
+ * Le rate sono SOLO sul setup (ovvero totalToSplit). I canoni mensili e gli
+ * anticipi annuali NON entrano qui: il drawer li gestisce separatamente
+ * con la logica esistente di buildDefaultPaymentPlan.
+ */
+export function buildCustomPaymentPlan(input: CustomPlanInput): CustomPlanResult {
+  const total = Math.max(0, Math.round(input.totalToSplit));
+  const depositAmount = Math.max(
+    0,
+    Math.min(
+      total,
+      input.deposit.mode === "amount"
+        ? Math.round(input.deposit.amount)
+        : Math.round((total * input.deposit.percent) / 100)
+    )
+  );
+  const remainder = Math.max(0, total - depositAmount);
+  const n = Math.max(0, Math.floor(input.numInstallments));
+
+  const threshold = input.methodThreshold ?? PAYMENT_METHOD_THRESHOLD_EUR;
+
+  const rows: PlanRowInput[] = [];
+
+  if (depositAmount > 0) {
+    rows.push({
+      amount: depositAmount,
+      dueDate: input.depositDate,
+      kind: PAYMENT_KIND.SETUP_DEPOSIT,
+      notes: `Acconto · ${input.depositMethod ?? suggestMethod(depositAmount, threshold)}`,
+    });
+  }
+
+  let installmentBase = 0;
+  let installmentLast = 0;
+
+  if (n > 0 && remainder > 0) {
+    // Rata "base": importo intero diviso N. L'ultima compensa lo scarto di arrotondamento
+    // cosi' la somma delle rate fa esattamente remainder.
+    installmentBase = Math.floor(remainder / n);
+    installmentLast = remainder - installmentBase * (n - 1);
+
+    for (let i = 0; i < n; i++) {
+      const isLast = i === n - 1;
+      const amount = isLast ? installmentLast : installmentBase;
+      const dueDate = input.installmentDates && input.installmentDates[i]
+        ? input.installmentDates[i]
+        : addMonthsStartOfDay(input.firstInstallmentDate, i);
+      const method = input.installmentMethods && input.installmentMethods[i]
+        ? input.installmentMethods[i]
+        : suggestMethod(amount, threshold);
+      rows.push({
+        amount,
+        dueDate,
+        kind: PAYMENT_KIND.INSTALLMENT,
+        notes: `Rata ${i + 1} di ${n} · ${method}`,
+      });
+    }
+  }
+
+  return { rows, depositAmount, remainder, installmentBase, installmentLast };
+}
 
 type ProductLite = { code: string; block: string; isMonthly: boolean };
 

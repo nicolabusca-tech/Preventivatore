@@ -32,5 +32,5 @@ export type QuoteAdjustmentJson = {
 export type GeneratePlanResponseJson = {
   payments: QuotePaymentJson[];
   plannedCount: number;
-  scope: "all" | "monthly";
+  scope: "all" | "monthly" | "custom";
 };

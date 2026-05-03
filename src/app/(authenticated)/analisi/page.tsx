@@ -19,6 +19,7 @@ import {
 } from "@/lib/fase";
 import type { AnalyticsQuote, AnalyticsResponse } from "@/lib/types/analytics";
 import type { DrawerPayment, DrawerQuote } from "@/lib/types/payments-drawer";
+import { DashboardYoY } from "@/components/analytics/DashboardYoY";
 
 function deriveFase(q: AnalyticsQuote): FaseValue {
   return deriveFaseShared(q);
@@ -73,6 +74,10 @@ export default function AnalisiPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<"30d" | "90d" | "180d" | "365d">("180d");
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState<number>(currentYear);
+  const [compareEnabled, setCompareEnabled] = useState<boolean>(true);
+  const compareYear = compareEnabled ? year - 1 : null;
   const [tableQuery, setTableQuery] = useState("");
   const [faseFilter, setFaseFilter] = useState<"all" | FaseValue>("all");
   const [busy, setBusy] = useState(false);
@@ -82,7 +87,8 @@ export default function AnalisiPage() {
     let alive = true;
     setLoading(true);
     setError(null);
-    fetch(`/api/analytics?range=${range}`)
+    const cy = compareYear === null ? "none" : String(compareYear);
+    fetch(`/api/analytics?range=${range}&year=${year}&compareYear=${cy}`)
       .then(async (r) => {
         const body = await r.json().catch(() => null);
         if (!r.ok) throw new Error(body?.error || `Errore analytics (HTTP ${r.status})`);
@@ -104,7 +110,8 @@ export default function AnalisiPage() {
     return () => {
       alive = false;
     };
-  }, [range]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, year, compareEnabled]);
 
   // Ricarica quando: la pagina torna in vista (focus/bfcache/visibility) oppure
   // un'altra pagina dell'app dichiara di aver modificato un preventivo.
@@ -124,7 +131,7 @@ export default function AnalisiPage() {
       window.removeEventListener("mc:quote-updated", maybeRefresh as EventListener);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range]);
+  }, [range, year, compareEnabled]);
 
   const filteredQuotes = useMemo(() => {
     if (!data?.quotes) return [];
@@ -151,7 +158,8 @@ export default function AnalisiPage() {
   }, [data]);
 
   async function refresh() {
-    const res = await fetch(`/api/analytics?range=${range}`);
+    const cy = compareYear === null ? "none" : String(compareYear);
+    const res = await fetch(`/api/analytics?range=${range}&year=${year}&compareYear=${cy}`);
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new Error(body?.error || "Errore refresh");
     setData(body as AnalyticsResponse);
@@ -256,16 +264,39 @@ export default function AnalisiPage() {
             Pipeline preventivi e gestione pagamenti.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <select
-            className="input-row w-[11rem] shrink-0"
+            className="input-row w-[10rem] shrink-0"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            aria-label="Anno"
+          >
+            {Array.from({ length: 5 }, (_, i) => currentYear - i).map((y) => (
+              <option key={y} value={y}>
+                Anno {y}
+              </option>
+            ))}
+          </select>
+          <label className="flex items-center gap-1 text-sm cursor-pointer" style={{ color: "var(--mc-text-secondary)" }}>
+            <input
+              type="checkbox"
+              checked={compareEnabled}
+              onChange={(e) => setCompareEnabled(e.target.checked)}
+              style={{ accentColor: "#FF6A00" }}
+            />
+            Confronta {year - 1}
+          </label>
+          <select
+            className="input-row w-[10rem] shrink-0"
             value={range}
             onChange={(e) => setRange(e.target.value as any)}
+            aria-label="Range tabella preventivi"
+            title="Filtra la tabella preventivi piu' in basso"
           >
-            <option value="30d">Ultimi 30 giorni</option>
-            <option value="90d">Ultimi 90 giorni</option>
-            <option value="180d">Ultimi 180 giorni</option>
-            <option value="365d">Ultimi 365 giorni</option>
+            <option value="30d">Tabella: 30 giorni</option>
+            <option value="90d">Tabella: 90 giorni</option>
+            <option value="180d">Tabella: 180 giorni</option>
+            <option value="365d">Tabella: 365 giorni</option>
           </select>
           <button
             className="btn-ghost shrink-0"
@@ -283,78 +314,29 @@ export default function AnalisiPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Dashboard YoY: KPI con confronto anno precedente + 4 widget grafici */}
+      <DashboardYoY data={data} />
+
+      {/* KPI legacy su pagamenti (cash YTD) tenute come complemento al dashboard */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="stat-card text-left">
-          <div className="stat-label">Acquisito (1° anno)</div>
-          <div className="stat-value">{formatEuro(kpi.acquired)}</div>
-          <div className="stat-sub">{kpi.wonCount} preventivi acquisiti</div>
-        </div>
-        <div className="stat-card text-left">
-          <div className="stat-label">Da incassare</div>
+          <div className="stat-label">Da incassare (rate aperte)</div>
           <div className="stat-value">{formatEuro(kpi.outstanding)}</div>
-          <div className="stat-sub">Rate aperte</div>
+          <div className="stat-sub">tutte le rate non saldate</div>
         </div>
         <div className="stat-card text-left">
           <div className="stat-label">Incassato</div>
           <div className="stat-value">{formatEuro(kpi.paid)}</div>
-          <div className="stat-sub">Pagamenti segnati</div>
+          <div className="stat-sub">pagamenti segnati</div>
         </div>
         <div className="stat-card text-left">
-          <div className="stat-label">Preventivi nel periodo</div>
+          <div className="stat-label">Preventivi nel range tabella</div>
           <div className="stat-value">{data.summary.count || 0}</div>
-          <div className="stat-sub">Totale generati</div>
+          <div className="stat-sub">filtro tabella sotto</div>
         </div>
       </div>
 
-      {series.length > 0 && (
-        <div className="card p-5">
-          <div className="flex items-baseline justify-between mb-2">
-            <div>
-              <div className="font-semibold">Acquisito cumulativo</div>
-              <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
-                Sommatoria progressiva del valore (setup + 1° anno) dei preventivi acquisiti, per mese di acquisizione.
-              </div>
-            </div>
-            <div className="tabular-nums font-semibold" style={{ color: "var(--mc-accent)" }}>
-              {formatEuro(series[series.length - 1]?.cumulative || 0)}
-            </div>
-          </div>
-          <div style={{ width: "100%", height: 260 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--mc-border)" opacity={0.6} />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--mc-text-secondary)" />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  stroke="var(--mc-text-secondary)"
-                  tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`}
-                />
-                <Tooltip
-                  formatter={(value, name) => [
-                    formatEuro(Number(value ?? 0)),
-                    String(name ?? ""),
-                  ]}
-                  labelStyle={{ color: "var(--mc-text-secondary)" }}
-                  contentStyle={{
-                    background: "var(--mc-bg-elevated)",
-                    border: "1px solid var(--mc-border)",
-                    borderRadius: 8,
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="cumulative"
-                  name="Acquisito cumulativo"
-                  stroke="var(--mc-accent)"
-                  strokeWidth={2.5}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
+
 
       <div className="card">
         <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--mc-border)" }}>

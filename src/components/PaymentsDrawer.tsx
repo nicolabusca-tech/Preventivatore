@@ -125,7 +125,6 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
   // Piano pagamenti personalizzato (custom)
   // Hooks tenuti SOPRA l'early return per rispettare Rules of Hooks.
   // ========================================
-  const [showCustomBuilder, setShowCustomBuilder] = useState(false);
   const [customDepositMode, setCustomDepositMode] = useState<"amount" | "percent">("amount");
   const [customDepositAmount, setCustomDepositAmount] = useState<string>("");
   const [customDepositPercent, setCustomDepositPercent] = useState<string>("30");
@@ -212,7 +211,6 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
     }
     setCustomNumInstallments(String(p.numInstallments || 0));
     if (p.firstInstallmentDate) setCustomFirstInstDate(p.firstInstallmentDate);
-    setShowCustomBuilder(true);
   }
 
   // Anteprima locale: usata SOLO per mostrare a video l'anteprima dell'acconto
@@ -388,7 +386,6 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
       await patchQuote({
         wonAt: parseInputDateToIso(startDate),
         deliveryExpectedAt: parseInputDateToIso(endDate),
-        depositPercent: Math.min(100, Math.max(0, Math.round(deposit))),
       });
       await onChanged();
     } catch (e) {
@@ -475,7 +472,7 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
 
         <section className="px-5 py-4" style={{ borderBottom: "1px solid var(--mc-border)" }}>
           <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "var(--mc-text-secondary)" }}>
-            Date e acconto
+            Date
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -505,97 +502,10 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
               </div>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 items-end">
-            <div>
-              <div className="label">Acconto setup %</div>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className="input text-sm tabular-nums"
-                value={deposit}
-                onChange={(e) => setDeposit(Number(e.target.value))}
-                disabled={busy}
-              />
-            </div>
-            <div className="flex justify-end">
-              <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={saveDates}>
-                Salva date
-              </button>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2 items-center">
-            {(() => {
-              const hasMonthly = quote.totalMonthly > 0;
-              const missingEnd = hasMonthly && !endDate;
-              const missingStart = !startDate;
-              const blockAll = missingStart || missingEnd;
-              const allTitle = missingStart
-                ? "Imposta la data inizio"
-                : missingEnd
-                  ? "Imposta la data fine: serve per le mensilità"
-                  : "Genera tutto: acconto + anticipi + 12 mensilità";
-              return (
-                <>
-                  <button
-                    type="button"
-                    className="btn-primary text-sm"
-                    disabled={busy || blockAll}
-                    title={allTitle}
-                    onClick={async () => {
-                      setError(null);
-                      setBusy(true);
-                      try {
-                        await generatePlan("all");
-                        await onChanged();
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : "Errore inatteso");
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}
-                  >
-                    Genera piano completo
-                  </button>
-                  {hasMonthly && (
-                    <button
-                      type="button"
-                      className="btn-ghost text-sm"
-                      disabled={busy || !endDate}
-                      title={!endDate ? "Imposta la data fine per generare le mensilità" : "Rigenera solo le 12 mensilità (preserva le rate setup)"}
-                      onClick={async () => {
-                        setError(null);
-                        setBusy(true);
-                        try {
-                          await generatePlan("monthly");
-                          await onChanged();
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : "Errore inatteso");
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    >
-                      Rigenera solo mensilità
-                    </button>
-                  )}
-                  {blockAll && (
-                    <span className="text-[11px]" style={{ color: "var(--mc-warning)" }}>
-                      {missingStart ? "Manca data inizio" : "Manca data fine (serve per le mensilità)"}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className="btn-ghost text-sm"
-                    disabled={busy}
-                    onClick={() => setShowCustomBuilder((s) => !s)}
-                    title="Costruisci un piano su misura: acconto in € o %, N rate del saldo, prima data e metodo"
-                  >
-                    {showCustomBuilder ? "Chiudi piano personalizzato" : "Piano personalizzato"}
-                  </button>
-                </>
-              );
-            })()}
+          <div className="mt-3 flex justify-end">
+            <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={saveDates}>
+              Salva date
+            </button>
           </div>
 
           {/* Hint piano cliente precedente: appare solo se il preventivo non
@@ -646,7 +556,7 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
             </div>
           )}
 
-          {showCustomBuilder && customPreview && (
+          {customPreview && (
             <div className="mt-3 p-4 rounded-lg" style={{ background: "var(--mc-bg-elevated)", border: "1px solid var(--mc-border)" }}>
               <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "var(--mc-text-secondary)" }}>
                 Piano personalizzato — setup {formatEuro(customPreview.total)}
@@ -681,6 +591,46 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
                     }}
                   >
                     Percentuale (%)
+                  </button>
+                </div>
+
+                {/* Preset rapidi: scrivono direttamente nei campi acconto. */}
+                <div className="mb-3 flex items-center gap-2 flex-wrap text-xs">
+                  <span style={{ color: "var(--mc-text-muted)" }}>Preset:</span>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 rounded border"
+                    style={{ borderColor: "var(--mc-border)" }}
+                    onClick={() => {
+                      setCustomDepositMode("percent");
+                      setCustomDepositPercent("30");
+                    }}
+                  >
+                    30%
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 rounded border"
+                    style={{ borderColor: "var(--mc-border)" }}
+                    onClick={() => {
+                      setCustomDepositMode("percent");
+                      setCustomDepositPercent("50");
+                    }}
+                  >
+                    50%
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 rounded border"
+                    style={{ borderColor: "var(--mc-border)" }}
+                    onClick={() => {
+                      setCustomDepositMode("percent");
+                      setCustomDepositPercent("100");
+                      setCustomNumInstallments("0");
+                    }}
+                    title="Pagamento unico: acconto al 100%, niente rate"
+                  >
+                    Pagamento unico
                   </button>
                 </div>
 
@@ -825,30 +775,52 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
                 )}
               </div>
 
-              <button
-                type="button"
-                className="btn-primary text-sm"
-                disabled={busy || !customPreview || (customPreview.remainder > 0 && customPreview.n === 0)}
-                onClick={async () => {
-                  setError(null);
-                  setBusy(true);
-                  try {
-                    await generatePlanCustom();
-                    setShowCustomBuilder(false);
-                    await onChanged();
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : "Errore inatteso");
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Genera piano personalizzato
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="btn-primary text-sm"
+                  disabled={busy || !customPreview || (customPreview.remainder > 0 && customPreview.n === 0)}
+                  onClick={async () => {
+                    setError(null);
+                    setBusy(true);
+                    try {
+                      await generatePlanCustom();
+                      await onChanged();
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Errore inatteso");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Genera piano
+                </button>
+                {quote.totalMonthly > 0 && (
+                  <button
+                    type="button"
+                    className="btn-ghost text-sm"
+                    disabled={busy || !endDate}
+                    title={!endDate ? "Imposta la data fine in alto per generare le mensilita'" : "Rigenera solo le 12 mensilita' canone (preserva acconto e rate setup)"}
+                    onClick={async () => {
+                      setError(null);
+                      setBusy(true);
+                      try {
+                        await generatePlan("monthly");
+                        await onChanged();
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "Errore inatteso");
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Solo canoni
+                  </button>
+                )}
+              </div>
               <p className="text-[11px] mt-2" style={{ color: "var(--mc-text-muted)" }}>
-                Sostituisce ogni rata esistente. Le mensilità canone (se ci sono) e gli anticipi annuali vengono
-                aggiunti automaticamente come oggi. Le rate generate puoi poi modificarle una per una nella tabella
-                qui sotto: data, importo, metodo, nota e segno di incasso.
+                "Genera piano" sostituisce ogni rata esistente. Le mensilita' canone e gli anticipi annuali
+                vengono aggiunti automaticamente. Le rate puoi modificarle una per una nella tabella qui sotto.
               </p>
             </div>
           )}

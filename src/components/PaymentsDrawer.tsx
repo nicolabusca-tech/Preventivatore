@@ -160,13 +160,45 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
     const n = Math.max(0, Math.min(60, Math.floor(Number(customNumInstallments) || 0)));
     const base = n > 0 ? Math.floor(remainder / n) : 0;
     const last = n > 0 ? remainder - base * (n - 1) : 0;
-    return { total, depositAmount, remainder, n, base, last };
+
+    // Costruisco la lista delle rate previste (date + importi + metodo suggerito)
+    // cosi' la preview tabellare e la chiamata API sono coerenti.
+    const METHOD_THRESHOLD = 500;
+    function suggestMethod(amt: number): "bank" | "card" {
+      return amt >= METHOD_THRESHOLD ? "bank" : "card";
+    }
+    function addMonths(iso: string, m: number): string {
+      if (!iso) return iso;
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      const x = new Date(d.getFullYear(), d.getMonth() + m, d.getDate(), 12, 0, 0, 0);
+      const y = x.getFullYear();
+      const mm = String(x.getMonth() + 1).padStart(2, "0");
+      const dd = String(x.getDate()).padStart(2, "0");
+      return `${y}-${mm}-${dd}`;
+    }
+    const installments: Array<{ index: number; date: string; amount: number; method: "bank" | "card" }> = [];
+    if (n > 0 && remainder > 0) {
+      for (let i = 0; i < n; i++) {
+        const isLast = i === n - 1;
+        const amount = isLast ? last : base;
+        installments.push({
+          index: i + 1,
+          date: addMonths(customFirstInstDate, i),
+          amount,
+          method: suggestMethod(amount),
+        });
+      }
+    }
+
+    return { total, depositAmount, remainder, n, base, last, installments };
   }, [
     quote?.totalOneTime,
     customDepositMode,
     customDepositAmount,
     customDepositPercent,
     customNumInstallments,
+    customFirstInstDate,
   ]);
 
   if (!open || !quote) return null;
@@ -500,120 +532,180 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
           </div>
 
           {showCustomBuilder && customPreview && (
-            <div className="mt-3 p-3 rounded-lg" style={{ background: "var(--mc-bg-elevated)", border: "1px solid var(--mc-border)" }}>
-              <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--mc-text-secondary)" }}>
+            <div className="mt-3 p-4 rounded-lg" style={{ background: "var(--mc-bg-elevated)", border: "1px solid var(--mc-border)" }}>
+              <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "var(--mc-text-secondary)" }}>
                 Piano personalizzato — setup {formatEuro(customPreview.total)}
               </div>
 
               {/* SEZIONE 1: ACCONTO */}
-              <div className="mb-3">
-                <div className="text-xs font-semibold mb-1.5">1. Acconto</div>
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <div className="inline-flex rounded-md overflow-hidden" style={{ border: "1px solid var(--mc-border)" }}>
-                    <button
-                      type="button"
-                      className={"px-3 py-1 text-xs " + (customDepositMode === "amount" ? "bg-[var(--mc-orange)] text-white" : "")}
-                      onClick={() => setCustomDepositMode("amount")}
-                    >
-                      Importo €
-                    </button>
-                    <button
-                      type="button"
-                      className={"px-3 py-1 text-xs " + (customDepositMode === "percent" ? "bg-[var(--mc-orange)] text-white" : "")}
-                      onClick={() => setCustomDepositMode("percent")}
-                    >
-                      Percentuale %
-                    </button>
-                  </div>
-                  {customDepositMode === "amount" ? (
-                    <input
-                      type="number"
-                      className="input w-28 text-sm"
-                      placeholder="es. 5000"
-                      value={customDepositAmount}
-                      onChange={(e) => setCustomDepositAmount(e.target.value)}
-                      min={0}
-                    />
-                  ) : (
-                    <input
-                      type="number"
-                      className="input w-20 text-sm"
-                      placeholder="30"
-                      value={customDepositPercent}
-                      onChange={(e) => setCustomDepositPercent(e.target.value)}
-                      min={0}
-                      max={100}
-                    />
-                  )}
-                  <input
-                    type="date"
-                    className="input w-36 text-sm"
-                    value={customDepositDate}
-                    onChange={(e) => setCustomDepositDate(e.target.value)}
-                    title="Data acconto"
-                  />
-                  <select
-                    className="input w-24 text-sm"
-                    value={customDepositMethod}
-                    onChange={(e) => setCustomDepositMethod(e.target.value as "bank" | "card")}
-                    title="Metodo acconto"
+              <div className="mb-4 pb-4" style={{ borderBottom: "1px solid var(--mc-border)" }}>
+                <div className="text-sm font-semibold mb-2">1. Acconto alla firma</div>
+
+                {/* Segmented control €/% piu' visibile: due bottoni grossi affiancati */}
+                <div className="mb-2 grid grid-cols-2 gap-2" style={{ maxWidth: 240 }}>
+                  <button
+                    type="button"
+                    onClick={() => setCustomDepositMode("amount")}
+                    className="text-sm font-semibold rounded-md px-3 py-2 transition-all"
+                    style={{
+                      background: customDepositMode === "amount" ? "#FF6A00" : "transparent",
+                      color: customDepositMode === "amount" ? "white" : "var(--mc-text-secondary)",
+                      border: "1.5px solid " + (customDepositMode === "amount" ? "#FF6A00" : "var(--mc-border)"),
+                    }}
                   >
-                    <option value="bank">Bonifico</option>
-                    <option value="card">Carta</option>
-                  </select>
+                    Importo (€)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomDepositMode("percent")}
+                    className="text-sm font-semibold rounded-md px-3 py-2 transition-all"
+                    style={{
+                      background: customDepositMode === "percent" ? "#FF6A00" : "transparent",
+                      color: customDepositMode === "percent" ? "white" : "var(--mc-text-secondary)",
+                      border: "1.5px solid " + (customDepositMode === "percent" ? "#FF6A00" : "var(--mc-border)"),
+                    }}
+                  >
+                    Percentuale (%)
+                  </button>
                 </div>
-                <div className="text-[11px]" style={{ color: "var(--mc-text-muted)" }}>
-                  Acconto: <strong>{formatEuro(customPreview.depositAmount)}</strong>
-                  {" · "}
-                  Saldo da rateizzare: <strong>{formatEuro(customPreview.remainder)}</strong>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--mc-text-secondary)" }}>
+                      {customDepositMode === "amount" ? "Importo acconto" : "% sul setup"}
+                    </label>
+                    {customDepositMode === "amount" ? (
+                      <input
+                        type="number"
+                        className="input w-full text-sm"
+                        placeholder="es. 5000"
+                        value={customDepositAmount}
+                        onChange={(e) => setCustomDepositAmount(e.target.value)}
+                        min={0}
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        className="input w-full text-sm"
+                        placeholder="30"
+                        value={customDepositPercent}
+                        onChange={(e) => setCustomDepositPercent(e.target.value)}
+                        min={0}
+                        max={100}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--mc-text-secondary)" }}>
+                      Data acconto
+                    </label>
+                    <input
+                      type="date"
+                      className="input w-full text-sm"
+                      value={customDepositDate}
+                      onChange={(e) => setCustomDepositDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--mc-text-secondary)" }}>
+                      Metodo
+                    </label>
+                    <select
+                      className="input w-full text-sm"
+                      value={customDepositMethod}
+                      onChange={(e) => setCustomDepositMethod(e.target.value as "bank" | "card")}
+                    >
+                      <option value="bank">Bonifico</option>
+                      <option value="card">Carta</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-2 text-xs flex items-center gap-3" style={{ color: "var(--mc-text-secondary)" }}>
+                  <span>Acconto: <strong style={{ color: "var(--mc-text)" }}>{formatEuro(customPreview.depositAmount)}</strong></span>
+                  <span>·</span>
+                  <span>Saldo da rateizzare: <strong style={{ color: "var(--mc-text)" }}>{formatEuro(customPreview.remainder)}</strong></span>
                 </div>
               </div>
 
               {/* SEZIONE 2: SALDO IN RATE */}
-              <div className="mb-3">
-                <div className="text-xs font-semibold mb-1.5">2. Saldo in rate</div>
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <div className="text-xs">N. rate:</div>
-                  {[3, 4, 6, 12].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className={"px-2 py-1 text-xs rounded border " + (customNumInstallments === String(n) ? "bg-[var(--mc-orange)] text-white border-transparent" : "border-[var(--mc-border)]")}
-                      onClick={() => setCustomNumInstallments(String(n))}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                  <input
-                    type="number"
-                    className="input w-16 text-sm"
-                    value={customNumInstallments}
-                    onChange={(e) => setCustomNumInstallments(e.target.value)}
-                    min={0}
-                    max={60}
-                  />
-                  <input
-                    type="date"
-                    className="input w-36 text-sm"
-                    value={customFirstInstDate}
-                    onChange={(e) => setCustomFirstInstDate(e.target.value)}
-                    title="Data prima rata"
-                  />
+              <div className="mb-4">
+                <div className="text-sm font-semibold mb-2">2. Saldo in rate mensili</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--mc-text-secondary)" }}>
+                      Numero rate
+                    </label>
+                    <input
+                      type="number"
+                      className="input w-full text-sm"
+                      value={customNumInstallments}
+                      onChange={(e) => setCustomNumInstallments(e.target.value)}
+                      min={0}
+                      max={60}
+                      placeholder="es. 4"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider block mb-1" style={{ color: "var(--mc-text-secondary)" }}>
+                      Data prima rata
+                    </label>
+                    <input
+                      type="date"
+                      className="input w-full text-sm"
+                      value={customFirstInstDate}
+                      onChange={(e) => setCustomFirstInstDate(e.target.value)}
+                    />
+                  </div>
                 </div>
+
                 {customPreview.n > 0 && customPreview.remainder > 0 && (
-                  <div className="text-[11px]" style={{ color: "var(--mc-text-muted)" }}>
-                    {customPreview.n - 1 > 0 && (
-                      <>
-                        {customPreview.n - 1}× {formatEuro(customPreview.base)} +{" "}
-                      </>
-                    )}
-                    1× {formatEuro(customPreview.last)} (ultima rata, arrotondamento){" "}
-                    · prime auto-mensili dalla data prima rata
+                  <div className="mt-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--mc-text-secondary)" }}>
+                      Anteprima rate ({customPreview.n})
+                    </div>
+                    <div className="rounded-md overflow-hidden" style={{ border: "1px solid var(--mc-border)" }}>
+                      <table className="w-full text-xs tabular-nums">
+                        <thead style={{ background: "var(--mc-bg)", color: "var(--mc-text-secondary)" }}>
+                          <tr>
+                            <th className="text-left px-2.5 py-1.5 font-semibold">#</th>
+                            <th className="text-left px-2.5 py-1.5 font-semibold">Scadenza</th>
+                            <th className="text-right px-2.5 py-1.5 font-semibold">Importo</th>
+                            <th className="text-left px-2.5 py-1.5 font-semibold">Metodo (suggerito)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {customPreview.installments.map((r) => (
+                            <tr key={r.index} style={{ borderTop: "1px solid var(--mc-border)" }}>
+                              <td className="px-2.5 py-1.5">{r.index}</td>
+                              <td className="px-2.5 py-1.5">
+                                {r.date ? new Date(r.date).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                              </td>
+                              <td className="px-2.5 py-1.5 text-right font-semibold">{formatEuro(r.amount)}</td>
+                              <td className="px-2.5 py-1.5">{r.method === "bank" ? "Bonifico" : "Carta"}</td>
+                            </tr>
+                          ))}
+                          <tr style={{ borderTop: "1px solid var(--mc-border)", background: "var(--mc-bg)" }}>
+                            <td className="px-2.5 py-1.5 font-semibold" colSpan={2}>Totale rate</td>
+                            <td className="px-2.5 py-1.5 text-right font-semibold">{formatEuro(customPreview.remainder)}</td>
+                            <td className="px-2.5 py-1.5"></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="text-[11px] mt-1" style={{ color: "var(--mc-text-muted)" }}>
+                      Metodo suggerito automaticamente: bonifico ≥ 500 €, carta sotto. Modificabile dopo la generazione, una rata per volta.
+                    </div>
                   </div>
                 )}
                 {customPreview.n === 0 && customPreview.remainder > 0 && (
-                  <div className="text-[11px]" style={{ color: "var(--mc-warning)" }}>
-                    Imposta almeno 1 rata per coprire il saldo.
+                  <div className="mt-2 text-xs" style={{ color: "var(--mc-warning)" }}>
+                    Imposta almeno 1 rata per coprire il saldo di {formatEuro(customPreview.remainder)}.
+                  </div>
+                )}
+                {customPreview.remainder === 0 && customPreview.depositAmount > 0 && (
+                  <div className="mt-2 text-xs" style={{ color: "var(--mc-text-muted)" }}>
+                    L&apos;acconto copre il setup intero, niente rate da generare.
                   </div>
                 )}
               </div>

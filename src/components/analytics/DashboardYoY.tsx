@@ -110,9 +110,9 @@ function MonthlyYoYChart({
             <YAxis
               stroke="var(--mc-text-muted)"
               fontSize={11}
-              tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
+              tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
             />
-            <Tooltip formatter={(v: number) => formatEuro(v)} />
+            <Tooltip formatter={((v: number) => formatEuro(v)) as any} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Line
               type="monotone"
@@ -170,8 +170,9 @@ function PipelineByStageChart({ data }: { data: AnalyticsPipelineByStage[] }) {
             />
             <YAxis dataKey="label" type="category" stroke="var(--mc-text-muted)" fontSize={11} width={100} />
             <Tooltip
-              formatter={(v: number, _key: string, item: { payload: { count: number } }) =>
-                [formatEuro(v), `${item?.payload?.count ?? 0} preventivi`]
+              formatter={
+                ((v: number, _key: string, item: { payload: { count: number } }) =>
+                  [formatEuro(v), `${item?.payload?.count ?? 0} preventivi`]) as any
               }
             />
             <Bar dataKey="valore" radius={[0, 4, 4, 0]}>
@@ -250,9 +251,9 @@ function CashflowChart({ data }: { data: CashflowPoint[] }) {
             <YAxis
               stroke="var(--mc-text-muted)"
               fontSize={11}
-              tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
+              tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
             />
-            <Tooltip formatter={(v: number) => formatEuro(v)} />
+            <Tooltip formatter={((v: number) => formatEuro(v)) as any} />
             <Area
               type="monotone"
               dataKey="expected"

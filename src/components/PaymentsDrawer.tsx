@@ -171,6 +171,84 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
     }
   }
 
+  // ========================================
+  // Piano pagamenti personalizzato (custom)
+  // ========================================
+  const [showCustomBuilder, setShowCustomBuilder] = useState(false);
+  const [customDepositMode, setCustomDepositMode] = useState<"amount" | "percent">("amount");
+  const [customDepositAmount, setCustomDepositAmount] = useState<string>("");
+  const [customDepositPercent, setCustomDepositPercent] = useState<string>("30");
+  const [customDepositDate, setCustomDepositDate] = useState<string>(""); // ISO date
+  const [customDepositMethod, setCustomDepositMethod] = useState<"bank" | "card">("bank");
+  const [customNumInstallments, setCustomNumInstallments] = useState<string>("4");
+  const [customFirstInstDate, setCustomFirstInstDate] = useState<string>(""); // ISO date
+
+  // Default: acconto oggi, prima rata fra 1 mese
+  useEffect(() => {
+    if (!quote) return;
+    const today = new Date();
+    if (!customDepositDate) {
+      setCustomDepositDate(today.toISOString().slice(0, 10));
+    }
+    if (!customFirstInstDate) {
+      const next = new Date(today.getFullYear(), today.getMonth() + 1, 1, 12, 0, 0, 0);
+      setCustomFirstInstDate(next.toISOString().slice(0, 10));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote?.id]);
+
+  // Anteprima locale: usata SOLO per mostrare a video l'anteprima dell'acconto
+  // e delle rate prima di chiamare l'API. Il calcolo finale avviene server-side.
+  const customPreview = useMemo(() => {
+    if (!quote) return null;
+    const total = Math.max(0, Math.round(quote.totalOneTime || 0));
+    const depositAmount = customDepositMode === "amount"
+      ? Math.max(0, Math.min(total, Math.round(Number(customDepositAmount) || 0)))
+      : Math.max(0, Math.min(total, Math.round((total * (Number(customDepositPercent) || 0)) / 100)));
+    const remainder = Math.max(0, total - depositAmount);
+    const n = Math.max(0, Math.min(60, Math.floor(Number(customNumInstallments) || 0)));
+    const base = n > 0 ? Math.floor(remainder / n) : 0;
+    const last = n > 0 ? remainder - base * (n - 1) : 0;
+    return { total, depositAmount, remainder, n, base, last };
+  }, [
+    quote?.totalOneTime,
+    customDepositMode,
+    customDepositAmount,
+    customDepositPercent,
+    customNumInstallments,
+  ]);
+
+  async function generatePlanCustom() {
+    if (!customPreview || !quote) return;
+    if (payments.length > 0) {
+      const ok = window.confirm(
+        "Verranno cancellate tutte le rate esistenti e ricostruito il piano personalizzato. Procedere?"
+      );
+      if (!ok) return;
+    }
+    const customPlan = {
+      totalToSplit: customPreview.total,
+      deposit: customDepositMode === "amount"
+        ? { mode: "amount", amount: Number(customDepositAmount) || 0 }
+        : { mode: "percent", percent: Number(customDepositPercent) || 0 },
+      depositDate: customDepositDate,
+      depositMethod: customDepositMethod,
+      numInstallments: Number(customNumInstallments) || 0,
+      firstInstallmentDate: customFirstInstDate,
+    };
+    const res = await fetch(`/api/quotes/${quote.id}/payments/generate-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scope: "custom",
+        replaceExisting: true,
+        customPlan,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.error || "Errore generazione piano custom");
+  }
+
   async function generatePlan(scope: "all" | "monthly") {
     if (scope === "all" && payments.length > 0) {
       const ok = window.confirm(
@@ -401,10 +479,166 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
                       {missingStart ? "Manca data inizio" : "Manca data fine (serve per le mensilità)"}
                     </span>
                   )}
+                  <button
+                    type="button"
+                    className="btn-ghost text-sm"
+                    disabled={busy}
+                    onClick={() => setShowCustomBuilder((s) => !s)}
+                    title="Costruisci un piano su misura: acconto in € o %, N rate del saldo, prima data e metodo"
+                  >
+                    {showCustomBuilder ? "Chiudi piano personalizzato" : "Piano personalizzato"}
+                  </button>
                 </>
               );
             })()}
           </div>
+
+          {showCustomBuilder && customPreview && (
+            <div className="mt-3 p-3 rounded-lg" style={{ background: "var(--mc-bg-elevated)", border: "1px solid var(--mc-border)" }}>
+              <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--mc-text-secondary)" }}>
+                Piano personalizzato — setup {formatEuro(customPreview.total)}
+              </div>
+
+              {/* SEZIONE 1: ACCONTO */}
+              <div className="mb-3">
+                <div className="text-xs font-semibold mb-1.5">1. Acconto</div>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <div className="inline-flex rounded-md overflow-hidden" style={{ border: "1px solid var(--mc-border)" }}>
+                    <button
+                      type="button"
+                      className={"px-3 py-1 text-xs " + (customDepositMode === "amount" ? "bg-[var(--mc-orange)] text-white" : "")}
+                      onClick={() => setCustomDepositMode("amount")}
+                    >
+                      Importo €
+                    </button>
+                    <button
+                      type="button"
+                      className={"px-3 py-1 text-xs " + (customDepositMode === "percent" ? "bg-[var(--mc-orange)] text-white" : "")}
+                      onClick={() => setCustomDepositMode("percent")}
+                    >
+                      Percentuale %
+                    </button>
+                  </div>
+                  {customDepositMode === "amount" ? (
+                    <input
+                      type="number"
+                      className="input w-28 text-sm"
+                      placeholder="es. 5000"
+                      value={customDepositAmount}
+                      onChange={(e) => setCustomDepositAmount(e.target.value)}
+                      min={0}
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      className="input w-20 text-sm"
+                      placeholder="30"
+                      value={customDepositPercent}
+                      onChange={(e) => setCustomDepositPercent(e.target.value)}
+                      min={0}
+                      max={100}
+                    />
+                  )}
+                  <input
+                    type="date"
+                    className="input w-36 text-sm"
+                    value={customDepositDate}
+                    onChange={(e) => setCustomDepositDate(e.target.value)}
+                    title="Data acconto"
+                  />
+                  <select
+                    className="input w-24 text-sm"
+                    value={customDepositMethod}
+                    onChange={(e) => setCustomDepositMethod(e.target.value as "bank" | "card")}
+                    title="Metodo acconto"
+                  >
+                    <option value="bank">Bonifico</option>
+                    <option value="card">Carta</option>
+                  </select>
+                </div>
+                <div className="text-[11px]" style={{ color: "var(--mc-text-muted)" }}>
+                  Acconto: <strong>{formatEuro(customPreview.depositAmount)}</strong>
+                  {" · "}
+                  Saldo da rateizzare: <strong>{formatEuro(customPreview.remainder)}</strong>
+                </div>
+              </div>
+
+              {/* SEZIONE 2: SALDO IN RATE */}
+              <div className="mb-3">
+                <div className="text-xs font-semibold mb-1.5">2. Saldo in rate</div>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <div className="text-xs">N. rate:</div>
+                  {[3, 4, 6, 12].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={"px-2 py-1 text-xs rounded border " + (customNumInstallments === String(n) ? "bg-[var(--mc-orange)] text-white border-transparent" : "border-[var(--mc-border)]")}
+                      onClick={() => setCustomNumInstallments(String(n))}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    className="input w-16 text-sm"
+                    value={customNumInstallments}
+                    onChange={(e) => setCustomNumInstallments(e.target.value)}
+                    min={0}
+                    max={60}
+                  />
+                  <input
+                    type="date"
+                    className="input w-36 text-sm"
+                    value={customFirstInstDate}
+                    onChange={(e) => setCustomFirstInstDate(e.target.value)}
+                    title="Data prima rata"
+                  />
+                </div>
+                {customPreview.n > 0 && customPreview.remainder > 0 && (
+                  <div className="text-[11px]" style={{ color: "var(--mc-text-muted)" }}>
+                    {customPreview.n - 1 > 0 && (
+                      <>
+                        {customPreview.n - 1}× {formatEuro(customPreview.base)} +{" "}
+                      </>
+                    )}
+                    1× {formatEuro(customPreview.last)} (ultima rata, arrotondamento){" "}
+                    · prime auto-mensili dalla data prima rata
+                  </div>
+                )}
+                {customPreview.n === 0 && customPreview.remainder > 0 && (
+                  <div className="text-[11px]" style={{ color: "var(--mc-warning)" }}>
+                    Imposta almeno 1 rata per coprire il saldo.
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                disabled={busy || !customPreview || (customPreview.remainder > 0 && customPreview.n === 0)}
+                onClick={async () => {
+                  setError(null);
+                  setBusy(true);
+                  try {
+                    await generatePlanCustom();
+                    setShowCustomBuilder(false);
+                    await onChanged();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "Errore inatteso");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Genera piano personalizzato
+              </button>
+              <p className="text-[11px] mt-2" style={{ color: "var(--mc-text-muted)" }}>
+                Sostituisce ogni rata esistente. Le mensilità canone (se ci sono) e gli anticipi annuali vengono
+                aggiunti automaticamente come oggi. Le rate generate puoi poi modificarle una per una nella tabella
+                qui sotto: data, importo, metodo, nota e segno di incasso.
+              </p>
+            </div>
+          )}
         </section>
 
         <section className="px-5 py-4" style={{ borderBottom: "1px solid var(--mc-border)" }}>

@@ -62,11 +62,88 @@ export type AnalyticsPipeline = {
   done: number;
 };
 
+/** Punto di una serie mensile (12 mesi: gen..dic) per anno. */
+export type MonthlyPoint = {
+  /** 1..12 */
+  month: number;
+  label: string;
+  /** Acquisito per quel mese (totalAnnual del preventivo, attribuito al wonAt). */
+  acquired: number;
+  /** Numero preventivi vinti in quel mese. */
+  wonCount: number;
+  /** Nuovi preventivi creati in quel mese (createdAt). */
+  newCount: number;
+  /** Preventivi inviati in quel mese (sentAt). */
+  sentCount: number;
+};
+
+/** Aggregato per fase (pipeline). */
+export type AnalyticsPipelineByStage = {
+  stage: "draft" | "sent" | "in_trattativa" | "won" | "lost";
+  label: string;
+  count: number;
+  value: number;
+};
+
+/** Funnel di conversione: passi sequenziali con count + percentuale. */
+export type AnalyticsFunnelStep = {
+  stage: "drafts" | "sent" | "won";
+  label: string;
+  count: number;
+  /** Percentuale rispetto allo stage precedente (0..100). null per il primo. */
+  conversionFromPrev: number | null;
+};
+
+/** Punto della curva cashflow previsionale per i prossimi N mesi. */
+export type CashflowPoint = {
+  month: number;
+  year: number;
+  label: string;
+  /** Incassi gia' programmati (rate firmate non scadute, canoni mensili attivi su preventivi won). */
+  expected: number;
+};
+
+/** Vista YoY: anno corrente, anno di confronto, delta. */
+export type AnalyticsYoYView = {
+  /** Anno fiscale di riferimento (es. 2026). */
+  year: number;
+  /** Anno di confronto (es. 2025) o null se confronto disattivato. */
+  compareYear: number | null;
+  kpi: {
+    /** Acquisito YTD anno corrente. */
+    acquired: number;
+    /** Acquisito YTD anno precedente, fino allo stesso giorno-mese. */
+    acquiredPrev: number;
+    /** Delta percentuale (-100..+inf). */
+    acquiredDeltaPct: number | null;
+    /** Numero preventivi vinti YTD anno corrente. */
+    wonCount: number;
+    wonCountPrev: number;
+    /** Conversion rate YTD anno corrente (won / sent). */
+    conversionRate: number;
+    conversionRatePrev: number;
+    /** Pipeline aperta = somma totalAnnual dei preventivi salesStage="open" alla data odierna. */
+    pipelineOpenValue: number;
+  };
+  /** Serie mensile anno corrente (12 punti). */
+  monthly: MonthlyPoint[];
+  /** Serie mensile anno di confronto (12 punti) o array vuoto se compareYear null. */
+  monthlyPrev: MonthlyPoint[];
+};
+
 export type AnalyticsResponse = {
   rangeDays: number;
   from: string;
   summary: AnalyticsSummary;
   pipeline: AnalyticsPipeline;
+  /** Pipeline disaggregata per fase (nuovo formato per il widget Pipeline a barre). */
+  pipelineByStage?: AnalyticsPipelineByStage[];
+  /** Funnel di conversione bozza -> inviato -> acquisito. */
+  funnel?: AnalyticsFunnelStep[];
+  /** Cashflow previsionale prossimi 12 mesi (incassi gia' garantiti). */
+  cashflow12m?: CashflowPoint[];
+  /** Vista anno-su-anno con KPI e serie mensili. */
+  yoy?: AnalyticsYoYView;
   quotes: AnalyticsQuote[];
   payments: AnalyticsPaymentRow[];
   cash: { paid: number; outstanding: number };

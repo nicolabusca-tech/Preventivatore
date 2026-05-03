@@ -6,10 +6,15 @@ import { prisma } from "@/lib/prisma";
 import type {
   AnalyticsPaymentRow,
   AnalyticsPipeline,
+  AnalyticsPipelineByStage,
+  AnalyticsFunnelStep,
   AnalyticsQuote,
   AnalyticsResponse,
   AnalyticsSummary,
+  AnalyticsYoYView,
   AcquiredCumulativePoint,
+  CashflowPoint,
+  MonthlyPoint,
 } from "@/lib/types/analytics";
 
 const analyticsInclude = {
@@ -232,11 +237,285 @@ export async function GET(req: Request) {
 
   const quotesJson: AnalyticsQuote[] = enrichedQuotes.map(toAnalyticsQuote);
 
+  // ============================================================
+  // Aggregati per i widget della pagina Analisi YoY:
+  // - Pipeline per fase (Pipeline widget)
+  // - Funnel di conversione (Funnel widget)
+  // - Cashflow previsionale (Cashflow widget)
+  // - Vista anno-su-anno (YoY widget + KPI)
+  // ============================================================
+
+  const fnUrl = new URL(req.url);
+  const yearParam = Number(fnUrl.searchParams.get("year") || NaN);
+  const compareYearParam = fnUrl.searchParams.get("compareYear");
+  const yearForYoY = Number.isFinite(yearParam) && yearParam > 2000 && yearParam < 3000
+    ? yearParam
+    : new Date().getFullYear();
+  const compareYearForYoY = compareYearParam === "none"
+    ? null
+    : compareYearParam !== null && Number.isFinite(Number(compareYearParam))
+      ? Number(compareYearParam)
+      : yearForYoY - 1;
+
+  // Per il YoY caricho TUTTI i preventivi dell'anno corrente e dell'anno
+  // precedente (ignoro il range filter perche' YoY ha un filtro separato).
+  const yoyFrom = new Date(Math.min(yearForYoY, compareYearForYoY ?? yearForYoY), 0, 1, 0, 0, 0);
+  const yoyTo = new Date(yearForYoY + 1, 0, 1, 0, 0, 0);
+  const yoyWhereCommon: Prisma.QuoteWhereInput = isAdmin ? {} : { userId };
+  const yoyWhere: Prisma.QuoteWhereInput = {
+    ...yoyWhereCommon,
+    OR: [
+      { createdAt: { gte: yoyFrom, lt: yoyTo } },
+      { wonAt: { gte: yoyFrom, lt: yoyTo } },
+      { sentAt: { gte: yoyFrom, lt: yoyTo } },
+    ],
+  };
+  const yoyRows = await prisma.quote.findMany({
+    where: yoyWhere,
+    select: {
+      id: true,
+      totalAnnual: true,
+      salesStage: true,
+      status: true,
+      createdAt: true,
+      sentAt: true,
+      wonAt: true,
+    },
+    take: 5000,
+  });
+  type YoyRow = (typeof yoyRows)[number];
+
+  function emptyMonthlySeries(): MonthlyPoint[] {
+    const labels = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
+    return labels.map((l, i) => ({
+      month: i + 1,
+      label: l,
+      acquired: 0,
+      wonCount: 0,
+      newCount: 0,
+      sentCount: 0,
+    }));
+  }
+
+  function buildMonthlyForYear(rows: YoyRow[], year: number): MonthlyPoint[] {
+    const series = emptyMonthlySeries();
+    for (const r of rows) {
+      const cAt = r.createdAt;
+      if (cAt && cAt.getFullYear() === year) {
+        series[cAt.getMonth()].newCount++;
+      }
+      if (r.sentAt && r.sentAt.getFullYear() === year) {
+        series[r.sentAt.getMonth()].sentCount++;
+      }
+      if (r.wonAt && r.wonAt.getFullYear() === year) {
+        const idx = r.wonAt.getMonth();
+        series[idx].wonCount++;
+        series[idx].acquired += r.totalAnnual || 0;
+      }
+    }
+    return series;
+  }
+
+  const monthly = buildMonthlyForYear(yoyRows, yearForYoY);
+  const monthlyPrev = compareYearForYoY != null
+    ? buildMonthlyForYear(yoyRows, compareYearForYoY)
+    : [];
+
+  const todayMd = (() => {
+    const d = new Date();
+    return { m: d.getMonth(), d: d.getDate() };
+  })();
+  function ytdSum(series: MonthlyPoint[], rows: YoyRow[], year: number, key: "acquired" | "wonCount"): number {
+    // Sommatoria dei mesi 0..todayMd.m, e per il mese corrente solo i wonAt fino a today.
+    let total = 0;
+    for (let m = 0; m < todayMd.m; m++) {
+      total += series[m][key];
+    }
+    // mese corrente: filtro per giorno <= todayMd.d
+    for (const r of rows) {
+      if (!r.wonAt) continue;
+      if (r.wonAt.getFullYear() !== year) continue;
+      if (r.wonAt.getMonth() !== todayMd.m) continue;
+      if (r.wonAt.getDate() > todayMd.d) continue;
+      total += key === "acquired" ? (r.totalAnnual || 0) : 1;
+    }
+    return total;
+  }
+
+  const acquiredYTD = ytdSum(monthly, yoyRows, yearForYoY, "acquired");
+  const wonCountYTD = ytdSum(monthly, yoyRows, yearForYoY, "wonCount");
+  const acquiredYTDPrev = compareYearForYoY != null
+    ? ytdSum(monthlyPrev, yoyRows, compareYearForYoY, "acquired")
+    : 0;
+  const wonCountYTDPrev = compareYearForYoY != null
+    ? ytdSum(monthlyPrev, yoyRows, compareYearForYoY, "wonCount")
+    : 0;
+
+  function deltaPct(curr: number, prev: number): number | null {
+    if (prev === 0) return curr === 0 ? 0 : null; // null = nuovo, non confrontabile
+    return ((curr - prev) / prev) * 100;
+  }
+  function safeRate(num: number, den: number): number {
+    return den > 0 ? (num / den) * 100 : 0;
+  }
+  const sentYTD = (() => {
+    let n = 0;
+    for (let m = 0; m < todayMd.m; m++) n += monthly[m].sentCount;
+    for (const r of yoyRows) {
+      if (!r.sentAt) continue;
+      if (r.sentAt.getFullYear() !== yearForYoY) continue;
+      if (r.sentAt.getMonth() !== todayMd.m) continue;
+      if (r.sentAt.getDate() > todayMd.d) continue;
+      n += 1;
+    }
+    return n;
+  })();
+  const sentYTDPrev = compareYearForYoY != null ? (() => {
+    let n = 0;
+    for (let m = 0; m < todayMd.m; m++) n += monthlyPrev[m].sentCount;
+    for (const r of yoyRows) {
+      if (!r.sentAt) continue;
+      if (r.sentAt.getFullYear() !== compareYearForYoY) continue;
+      if (r.sentAt.getMonth() !== todayMd.m) continue;
+      if (r.sentAt.getDate() > todayMd.d) continue;
+      n += 1;
+    }
+    return n;
+  })() : 0;
+
+  // Pipeline open value: somma di totalAnnual su tutti i preventivi salesStage='open' attivi adesso
+  const pipelineOpenAggr = await prisma.quote.aggregate({
+    where: { ...yoyWhereCommon, salesStage: "open" },
+    _sum: { totalAnnual: true },
+  });
+  const pipelineOpenValue = pipelineOpenAggr._sum.totalAnnual || 0;
+
+  const yoy: AnalyticsYoYView = {
+    year: yearForYoY,
+    compareYear: compareYearForYoY,
+    kpi: {
+      acquired: acquiredYTD,
+      acquiredPrev: acquiredYTDPrev,
+      acquiredDeltaPct: deltaPct(acquiredYTD, acquiredYTDPrev),
+      wonCount: wonCountYTD,
+      wonCountPrev: wonCountYTDPrev,
+      conversionRate: safeRate(wonCountYTD, sentYTD),
+      conversionRatePrev: safeRate(wonCountYTDPrev, sentYTDPrev),
+      pipelineOpenValue,
+    },
+    monthly,
+    monthlyPrev,
+  };
+
+  // Pipeline per fase (intero spazio admin/utente, niente filtro temporale: e' "stato attuale").
+  const allQuotesForPipeline = await prisma.quote.findMany({
+    where: yoyWhereCommon,
+    select: { id: true, status: true, salesStage: true, totalAnnual: true },
+    take: 5000,
+  });
+
+  function classifyStage(q: { status: string; salesStage: string }): AnalyticsPipelineByStage["stage"] {
+    if (q.salesStage === "won") return "won";
+    if (q.salesStage === "lost") return "lost";
+    if (q.status === "draft" || q.status === "pending") return "draft";
+    if (q.status === "sent" || q.status === "viewed") {
+      // sent/viewed con salesStage open = "in trattativa"
+      return q.salesStage === "open" ? "in_trattativa" : "sent";
+    }
+    return "draft";
+  }
+  const stageMap: Record<string, { count: number; value: number }> = {
+    draft: { count: 0, value: 0 },
+    sent: { count: 0, value: 0 },
+    in_trattativa: { count: 0, value: 0 },
+    won: { count: 0, value: 0 },
+    lost: { count: 0, value: 0 },
+  };
+  for (const q of allQuotesForPipeline) {
+    const s = classifyStage(q);
+    stageMap[s].count++;
+    stageMap[s].value += q.totalAnnual || 0;
+  }
+  const stageLabels: Record<AnalyticsPipelineByStage["stage"], string> = {
+    draft: "Bozze",
+    sent: "Inviati",
+    in_trattativa: "In trattativa",
+    won: "Acquisiti",
+    lost: "Persi",
+  };
+  const pipelineByStage: AnalyticsPipelineByStage[] = (
+    ["draft", "sent", "in_trattativa", "won", "lost"] as const
+  ).map((s) => ({
+    stage: s,
+    label: stageLabels[s],
+    count: stageMap[s].count,
+    value: stageMap[s].value,
+  }));
+
+  // Funnel: bozze totali (incluse quelle poi inviate) -> inviati -> vinti.
+  // Conta i preventivi unici, raggruppando per "ha mai raggiunto questo step".
+  const funnelTotals = (() => {
+    const drafts = allQuotesForPipeline.length; // ogni preventivo ha sempre toccato "draft"
+    const sent = allQuotesForPipeline.filter((q) => q.status === "sent" || q.status === "viewed" || q.salesStage === "won" || q.salesStage === "lost").length;
+    const won = allQuotesForPipeline.filter((q) => q.salesStage === "won").length;
+    return { drafts, sent, won };
+  })();
+  const funnel: AnalyticsFunnelStep[] = [
+    { stage: "drafts", label: "Bozze create", count: funnelTotals.drafts, conversionFromPrev: null },
+    {
+      stage: "sent",
+      label: "Inviate al cliente",
+      count: funnelTotals.sent,
+      conversionFromPrev: funnelTotals.drafts > 0 ? (funnelTotals.sent / funnelTotals.drafts) * 100 : 0,
+    },
+    {
+      stage: "won",
+      label: "Acquisite",
+      count: funnelTotals.won,
+      conversionFromPrev: funnelTotals.sent > 0 ? (funnelTotals.won / funnelTotals.sent) * 100 : 0,
+    },
+  ];
+
+  // Cashflow previsionale 12 mesi: somma dei pagamenti programmati (dueDate
+  // futuro, non paidAt) sui preventivi acquisiti, raggruppati per mese.
+  const today = new Date();
+  const cashStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const cashEnd = new Date(today.getFullYear() + 1, today.getMonth(), 1);
+  const futurePayments = await prisma.quotePayment.findMany({
+    where: {
+      paidAt: null,
+      dueDate: { gte: cashStart, lt: cashEnd },
+      quote: yoyWhereCommon,
+    },
+    select: { amount: true, dueDate: true },
+  });
+  const cashByMonth = new Map<string, number>();
+  for (const p of futurePayments) {
+    if (!p.dueDate) continue;
+    const k = `${p.dueDate.getFullYear()}-${p.dueDate.getMonth()}`;
+    cashByMonth.set(k, (cashByMonth.get(k) || 0) + (p.amount || 0));
+  }
+  const cashflow12m: CashflowPoint[] = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(cashStart.getFullYear(), cashStart.getMonth() + i, 1);
+    const k = `${d.getFullYear()}-${d.getMonth()}`;
+    cashflow12m.push({
+      month: d.getMonth() + 1,
+      year: d.getFullYear(),
+      label: d.toLocaleDateString("it-IT", { month: "short", year: "2-digit" }),
+      expected: cashByMonth.get(k) || 0,
+    });
+  }
+
   const body: AnalyticsResponse = {
     rangeDays,
     from: from.toISOString(),
     summary,
     pipeline,
+    pipelineByStage,
+    funnel,
+    cashflow12m,
+    yoy,
     quotes: quotesJson,
     payments: flatPayments,
     cash,

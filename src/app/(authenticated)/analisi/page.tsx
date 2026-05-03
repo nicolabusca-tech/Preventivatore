@@ -73,6 +73,19 @@ export default function AnalisiPage() {
   const [data, setData] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Toggle "Mostra/Nascondi grafici" persistito in localStorage. Se non c'e'
+  // una preferenza salvata si parte con i grafici visibili.
+  const [chartsVisible, setChartsVisible] = useState<boolean>(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("mc-analisi-chartsVisible");
+    if (saved === "false") setChartsVisible(false);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("mc-analisi-chartsVisible", chartsVisible ? "true" : "false");
+  }, [chartsVisible]);
   const [range, setRange] = useState<"30d" | "90d" | "180d" | "365d">("180d");
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState<number>(currentYear);
@@ -305,6 +318,14 @@ export default function AnalisiPage() {
           >
             Aggiorna
           </button>
+          <button
+            type="button"
+            className="btn-ghost shrink-0"
+            onClick={() => setChartsVisible((v) => !v)}
+            title={chartsVisible ? "Nascondi i 4 grafici (resta solo la riga KPI)" : "Mostra di nuovo i grafici"}
+          >
+            {chartsVisible ? "Nascondi grafici" : "Mostra grafici"}
+          </button>
         </div>
       </div>
 
@@ -314,8 +335,8 @@ export default function AnalisiPage() {
         </div>
       )}
 
-      {/* Dashboard YoY: KPI con confronto anno precedente + 4 widget grafici */}
-      <DashboardYoY data={data} />
+      {/* Dashboard YoY: KPI con confronto anno precedente + 4 widget grafici (toggle) */}
+      <DashboardYoY data={data} chartsVisible={chartsVisible} />
 
       {/* KPI legacy su pagamenti (cash YTD) tenute come complemento al dashboard */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">

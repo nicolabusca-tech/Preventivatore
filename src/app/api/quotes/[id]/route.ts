@@ -356,11 +356,14 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     return NextResponse.json({ error: "CSRF" }, { status: 403 });
   }
 
+  // Cancellazione preventivo: SOLO admin (ripulitura test, eliminazione record errati).
+  // Cascade Prisma: items, payments, adjustments, pdfSnapshot vengono cancellati con onDelete: Cascade.
+  // L'audit log resta come traccia storica (entityId orfano e' voluto).
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ error: "Solo admin puo' eliminare preventivi" }, { status: 403 });
+  }
   const quote = await prisma.quote.findUnique({ where: { id: params.id } });
   if (!quote) return NextResponse.json({ error: "Non trovato" }, { status: 404 });
-  if (session.user.role !== "admin" && quote.userId !== session.user.id) {
-    return NextResponse.json({ error: "Accesso negato" }, { status: 403 });
-  }
 
   await prisma.quote.delete({ where: { id: params.id } });
   return NextResponse.json({ success: true });

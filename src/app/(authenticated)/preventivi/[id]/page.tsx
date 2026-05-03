@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { computeCredito } from "@/lib/pricing/engine";
 import { parseRoiSnapshot } from "@/lib/roi";
@@ -61,9 +62,38 @@ function buildFullAddress(q: QuoteDetail): string {
 export default function DettaglioPreventivoPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
+  const router = useRouter();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "admin";
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function deleteQuote() {
+    if (!quote) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/quotes/${quote.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setDeleteError(body?.error || "Errore eliminazione");
+        return;
+      }
+      router.push("/preventivi");
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Errore inatteso");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -368,6 +398,21 @@ export default function DettaglioPreventivoPage() {
                 }}
               >
                 Duplica come nuova bozza
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                type="button"
+                className="text-sm px-3 py-1.5 rounded-md border"
+                style={{ color: "var(--mc-danger)", borderColor: "var(--mc-danger)" }}
+                onClick={() => {
+                  setDeleteOpen(true);
+                  setDeleteText("");
+                  setDeleteError(null);
+                }}
+                title="Elimina definitivamente questo preventivo (solo admin)"
+              >
+                Elimina
               </button>
             )}
           </div>
@@ -857,6 +902,68 @@ export default function DettaglioPreventivoPage() {
           )}
         </div>
       </div>
+
+      {/* Modal conferma eliminazione: solo admin, conferma testuale */}
+      {deleteOpen && quote && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.55)" }}
+          onClick={() => !deleteBusy && setDeleteOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg p-5"
+            style={{ background: "var(--mc-bg)", border: "1px solid var(--mc-border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold mb-2" style={{ color: "var(--mc-danger)" }}>
+              Eliminare il preventivo {quote.quoteNumber}?
+            </h3>
+            <p className="text-sm mb-4" style={{ color: "var(--mc-text-secondary)" }}>
+              Operazione <strong>irreversibile</strong>. Verranno eliminati: voci, pagamenti,
+              rettifiche, snapshot PDF. L&apos;audit log resta come traccia storica.
+              Per confermare, scrivi <strong>ELIMINA</strong> qui sotto.
+            </p>
+            <input
+              type="text"
+              className="input w-full text-sm mb-3"
+              placeholder="ELIMINA"
+              value={deleteText}
+              onChange={(e) => setDeleteText(e.target.value)}
+              disabled={deleteBusy}
+              autoFocus
+            />
+            {deleteError && (
+              <div className="text-sm mb-3" style={{ color: "var(--mc-danger)" }}>
+                {deleteError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-ghost text-sm"
+                onClick={() => setDeleteOpen(false)}
+                disabled={deleteBusy}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="text-sm px-3 py-1.5 rounded-md font-semibold"
+                style={{
+                  background: "var(--mc-danger)",
+                  color: "white",
+                  opacity: deleteText === "ELIMINA" && !deleteBusy ? 1 : 0.5,
+                  cursor: deleteText === "ELIMINA" && !deleteBusy ? "pointer" : "not-allowed",
+                }}
+                disabled={deleteText !== "ELIMINA" || deleteBusy}
+                onClick={deleteQuote}
+              >
+                {deleteBusy ? "Eliminazione..." : "Elimina definitivamente"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

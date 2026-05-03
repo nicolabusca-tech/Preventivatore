@@ -433,9 +433,11 @@ function WinLossByOriginChart({ data }: { data: AnalyticsByOrigin[] }) {
 
 export type DashboardYoYProps = {
   data: AnalyticsResponse;
+  /** Se false, mostra solo i KPI e nasconde i 4 grafici grandi. Default: true. */
+  chartsVisible?: boolean;
 };
 
-export function DashboardYoY({ data }: DashboardYoYProps) {
+export function DashboardYoY({ data, chartsVisible = true }: DashboardYoYProps) {
   const yoy = data.yoy;
   const pipelineByStage = data.pipelineByStage;
   const funnel = data.funnel;
@@ -487,25 +489,29 @@ export function DashboardYoY({ data }: DashboardYoYProps) {
         <KpiCard label="Cashflow 12 mesi" value={formatEuro(cashflowTotal)} sub="incasso garantito" />
       </div>
 
-      {/* GRAFICI: 2x2 layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <MonthlyYoYChart
-          monthly={yoy.monthly}
-          monthlyPrev={yoy.monthlyPrev}
-          year={yoy.year}
-          compareYear={yoy.compareYear}
-        />
-        {pipelineByStage && pipelineByStage.length > 0 && (
-          <PipelineByStageChart data={pipelineByStage} />
-        )}
-        {funnel && funnel.length > 0 && <FunnelChart data={funnel} />}
-        {cashflow && cashflow.length > 0 && <CashflowChart data={cashflow} />}
-      </div>
+      {chartsVisible && (
+        <>
+          {/* GRAFICI: 2x2 layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <MonthlyYoYChart
+              monthly={yoy.monthly}
+              monthlyPrev={yoy.monthlyPrev}
+              year={yoy.year}
+              compareYear={yoy.compareYear}
+            />
+            {pipelineByStage && pipelineByStage.length > 0 && (
+              <PipelineByStageChart data={pipelineByStage} />
+            )}
+            {funnel && funnel.length > 0 && <FunnelChart data={funnel} />}
+            {cashflow && cashflow.length > 0 && <CashflowChart data={cashflow} />}
+          </div>
 
-      {/* Win/Loss per origine: full-width, e' la metrica piu' utile per decidere
-         dove investire tempo/budget commerciale. */}
-      {data.byOrigin && data.byOrigin.length > 0 && (
-        <WinLossByOriginChart data={data.byOrigin} />
+          {/* Win/Loss per origine: full-width, e' la metrica piu' utile per decidere
+             dove investire tempo/budget commerciale. */}
+          {data.byOrigin && data.byOrigin.length > 0 && (
+            <WinLossByOriginChart data={data.byOrigin} />
+          )}
+        </>
       )}
 
       <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>

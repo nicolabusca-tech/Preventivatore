@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { buildNextQuoteNumber } from "@/lib/quotes/numbering";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureQuoteSchema } from "@/lib/db/ensure-quote-schema";
@@ -13,13 +14,6 @@ import { logAction, summarizeForAudit, QUOTE_AUDIT_KEYS } from "@/lib/audit/log"
 const DCE_ALLOWED_CODES = ["DCE_BASE", "DCE_STRUTTURATO", "DCE_ENTERPRISE"] as const;
 const DIAGNOSI_CODE = "DIAGNOSI_STRATEGICA";
 const AUDIT_LAMPO_CODE = "AUDIT_LAMPO";
-
-function buildNextQuoteNumber(prev: string | null, year: number) {
-  const prefix = `Q${year}-`;
-  const prevNum = prev && prev.startsWith(prefix) ? Number(prev.slice(prefix.length)) : 0;
-  const nextNum = Number.isFinite(prevNum) ? prevNum + 1 : 1;
-  return `${prefix}${String(nextNum).padStart(4, "0")}`;
-}
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);

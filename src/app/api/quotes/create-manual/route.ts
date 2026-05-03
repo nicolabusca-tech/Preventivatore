@@ -11,6 +11,7 @@
 // non passa dal flusso /api/quotes/send.
 
 import { NextResponse } from "next/server";
+import { buildNextQuoteNumber } from "@/lib/quotes/numbering";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -37,13 +38,6 @@ type CleanLine = {
   isMonthly: boolean;
   cost: number; // euro interi (può essere 0)
 };
-
-function buildNextQuoteNumber(prev: string | null, year: number) {
-  const prefix = `Q${year}-`;
-  const prevNum = prev && prev.startsWith(prefix) ? Number(prev.slice(prefix.length)) : 0;
-  const nextNum = Number.isFinite(prevNum) ? prevNum + 1 : 1;
-  return `${prefix}${String(nextNum).padStart(4, "0")}`;
-}
 
 function toEuroInt(value: unknown): number {
   const n = Number(value);

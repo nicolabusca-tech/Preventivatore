@@ -1,0 +1,41 @@
+# Pipeline pre-deploy: prima che Vercel proceda al build/migrate, controlliamo
+# qui che il codice almeno compili e che i test del pricing engine passino.
+# Cosi' un push rotto non manda mai il sito desincronizzato.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Prisma generate
+        # Genera il client tipizzato dallo schema. Non serve DB.
+        run: npx prisma generate
+
+      - name: TypeScript check
+        # Niente emit, solo verifica tipi. Se il build su Vercel rompe per TS,
+        # qui lo vediamo prima.
+        run: npx tsc --noEmit
+
+      - name: Tests
+        # Test puri sul pricing engine + payment plan + credito + PDF layout +
+        # CSRF. Non richiedono DB.
+        run: npm test

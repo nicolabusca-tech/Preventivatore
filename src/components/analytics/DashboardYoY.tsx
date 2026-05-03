@@ -319,7 +319,7 @@ export function DashboardYoY({ data }: DashboardYoYProps) {
           sub={
             yoy.compareYear != null
               ? `vs ${formatPct(yoy.kpi.conversionRatePrev)} ${yoy.compareYear}`
-              : "won / sent YTD"
+              : "vinti / nuovi creati YTD"
           }
         />
         <KpiCard label="Cashflow 12 mesi" value={formatEuro(cashflowTotal)} sub="incasso garantito" />

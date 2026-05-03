@@ -358,30 +358,25 @@ export async function GET(req: Request) {
   function safeRate(num: number, den: number): number {
     return den > 0 ? (num / den) * 100 : 0;
   }
-  const sentYTD = (() => {
+  // Conversion rate: usiamo wonCount / newCount nello stesso periodo YTD invece
+  // di wonCount / sentCount. Motivo: un preventivo puo' essere stato sent un
+  // anno fa e wonAt quest'anno; se conto solo i sent dell'anno corrente posso
+  // ottenere ratio >100% (anomalia visiva). La metrica commercialmente piu'
+  // onesta e' "dei preventivi che ho aperto in questo periodo, quanti ho vinto?".
+  function ytdNewCount(rows: YoyRow[], year: number): number {
     let n = 0;
-    for (let m = 0; m < todayMd.m; m++) n += monthly[m].sentCount;
-    for (const r of yoyRows) {
-      if (!r.sentAt) continue;
-      if (r.sentAt.getFullYear() !== yearForYoY) continue;
-      if (r.sentAt.getMonth() !== todayMd.m) continue;
-      if (r.sentAt.getDate() > todayMd.d) continue;
-      n += 1;
+    for (const r of rows) {
+      if (!r.createdAt) continue;
+      if (r.createdAt.getFullYear() !== year) continue;
+      const m = r.createdAt.getMonth();
+      const d = r.createdAt.getDate();
+      if (m < todayMd.m) n++;
+      else if (m === todayMd.m && d <= todayMd.d) n++;
     }
     return n;
-  })();
-  const sentYTDPrev = compareYearForYoY != null ? (() => {
-    let n = 0;
-    for (let m = 0; m < todayMd.m; m++) n += monthlyPrev[m].sentCount;
-    for (const r of yoyRows) {
-      if (!r.sentAt) continue;
-      if (r.sentAt.getFullYear() !== compareYearForYoY) continue;
-      if (r.sentAt.getMonth() !== todayMd.m) continue;
-      if (r.sentAt.getDate() > todayMd.d) continue;
-      n += 1;
-    }
-    return n;
-  })() : 0;
+  }
+  const newCountYTD = ytdNewCount(yoyRows, yearForYoY);
+  const newCountYTDPrev = compareYearForYoY != null ? ytdNewCount(yoyRows, compareYearForYoY) : 0;
 
   // Pipeline open value: somma di totalAnnual su tutti i preventivi salesStage='open' attivi adesso
   const pipelineOpenAggr = await prisma.quote.aggregate({
@@ -399,8 +394,8 @@ export async function GET(req: Request) {
       acquiredDeltaPct: deltaPct(acquiredYTD, acquiredYTDPrev),
       wonCount: wonCountYTD,
       wonCountPrev: wonCountYTDPrev,
-      conversionRate: safeRate(wonCountYTD, sentYTD),
-      conversionRatePrev: safeRate(wonCountYTDPrev, sentYTDPrev),
+      conversionRate: safeRate(wonCountYTD, newCountYTD),
+      conversionRatePrev: safeRate(wonCountYTDPrev, newCountYTDPrev),
       pipelineOpenValue,
     },
     monthly,

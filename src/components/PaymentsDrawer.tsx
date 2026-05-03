@@ -134,6 +134,27 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
   const [customNumInstallments, setCustomNumInstallments] = useState<string>("4");
   const [customFirstInstDate, setCustomFirstInstDate] = useState<string>(""); // ISO date
 
+  // Memoria piano custom: ultimo piano custom applicato a un altro preventivo
+  // dello stesso cliente. Caricato on open dal back-end. Dismissabile per non
+  // riproporlo all'infinito se Cristina vuole partire da zero.
+  type LastCustomerPlan = {
+    found: true;
+    sourceQuoteId: string;
+    sourceQuoteNumber: string;
+    sourceCreatedAt: string;
+    sourceClientLabel: string | null;
+    plan: {
+      depositAmount: number;
+      depositDate: string | null;
+      depositMethod: string;
+      numInstallments: number;
+      firstInstallmentDate: string | null;
+      dominantMethod: string | null;
+    };
+  };
+  const [lastCustomerPlan, setLastCustomerPlan] = useState<LastCustomerPlan | null>(null);
+  const [lastPlanDismissed, setLastPlanDismissed] = useState(false);
+
   // Default: acconto oggi, prima rata fra 1 mese
   useEffect(() => {
     if (!quote) return;
@@ -147,6 +168,52 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quote?.id]);
+
+  // Carica l'ultimo piano custom dello stesso cliente (se esiste). Lo
+  // facciamo solo quando il drawer e' aperto, il quote esiste e non ci sono
+  // gia' pagamenti generati: a piano gia' creato l'hint sarebbe rumore.
+  useEffect(() => {
+    if (!open || !quote) return;
+    if (payments && payments.length > 0) return;
+    let cancelled = false;
+    setLastCustomerPlan(null);
+    setLastPlanDismissed(false);
+    (async () => {
+      try {
+        const res = await fetch(`/api/quotes/${quote.id}/payments/last-customer-plan`, {
+          credentials: "same-origin",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data && data.found === true) {
+          setLastCustomerPlan(data as LastCustomerPlan);
+        }
+      } catch {
+        // silenzioso: e' una funzione di comodita', non bloccante
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, quote?.id, payments?.length]);
+
+  // Applica i parametri del piano precedente nei campi del builder custom.
+  // Lavoriamo in modalita' "amount" perche' e' quello che abbiamo salvato
+  // come importo concreto, non come percentuale.
+  function applyLastCustomerPlan() {
+    if (!lastCustomerPlan) return;
+    const p = lastCustomerPlan.plan;
+    setCustomDepositMode("amount");
+    setCustomDepositAmount(String(p.depositAmount || 0));
+    if (p.depositDate) setCustomDepositDate(p.depositDate);
+    if (p.depositMethod === "card" || p.depositMethod === "bank") {
+      setCustomDepositMethod(p.depositMethod);
+    }
+    setCustomNumInstallments(String(p.numInstallments || 0));
+    if (p.firstInstallmentDate) setCustomFirstInstDate(p.firstInstallmentDate);
+    setShowCustomBuilder(true);
+  }
 
   // Anteprima locale: usata SOLO per mostrare a video l'anteprima dell'acconto
   // e delle rate prima di chiamare l'API. Il calcolo finale avviene server-side.
@@ -530,6 +597,54 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
               );
             })()}
           </div>
+
+          {/* Hint piano cliente precedente: appare solo se il preventivo non
+              ha ancora pagamenti e abbiamo trovato un piano custom su un
+              preventivo precedente dello stesso cliente. Una sola riga,
+              dismissabile. */}
+          {lastCustomerPlan && !lastPlanDismissed && payments.length === 0 && (
+            <div
+              className="mt-3 p-3 rounded-lg flex items-center gap-3 flex-wrap"
+              style={{
+                background: "var(--mc-bg-elevated)",
+                border: "1px dashed var(--mc-border)",
+              }}
+            >
+              <div className="text-xs leading-snug" style={{ color: "var(--mc-text-secondary)" }}>
+                Piano gia' usato per <strong style={{ color: "var(--mc-text)" }}>{lastCustomerPlan.sourceClientLabel || "questo cliente"}</strong>
+                {" su "}
+                <strong style={{ color: "var(--mc-text)" }}>{lastCustomerPlan.sourceQuoteNumber}</strong>
+                {": acconto "}
+                <strong style={{ color: "var(--mc-text)" }}>{formatEuro(lastCustomerPlan.plan.depositAmount)}</strong>
+                {" + "}
+                <strong style={{ color: "var(--mc-text)" }}>{lastCustomerPlan.plan.numInstallments}</strong>
+                {" rate"}
+                {lastCustomerPlan.plan.dominantMethod
+                  ? <> · prevalente <strong style={{ color: "var(--mc-text)" }}>{lastCustomerPlan.plan.dominantMethod === "bank" ? "bonifico" : "carta"}</strong></>
+                  : null}
+                .
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  className="text-xs font-semibold px-3 py-1.5 rounded-md"
+                  style={{ background: "#FF6A00", color: "white", border: "1.5px solid #FF6A00" }}
+                  onClick={applyLastCustomerPlan}
+                >
+                  Usa come template
+                </button>
+                <button
+                  type="button"
+                  className="text-xs px-2 py-1.5 rounded-md"
+                  style={{ color: "var(--mc-text-muted)" }}
+                  onClick={() => setLastPlanDismissed(true)}
+                  title="Nascondi questo suggerimento"
+                >
+                  Nascondi
+                </button>
+              </div>
+            </div>
+          )}
 
           {showCustomBuilder && customPreview && (
             <div className="mt-3 p-4 rounded-lg" style={{ background: "var(--mc-bg-elevated)", border: "1px solid var(--mc-border)" }}>

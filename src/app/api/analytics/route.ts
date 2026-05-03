@@ -15,6 +15,7 @@ import type {
   AcquiredCumulativePoint,
   CashflowPoint,
   MonthlyPoint,
+  AnalyticsByOrigin,
 } from "@/lib/types/analytics";
 
 const analyticsInclude = {
@@ -502,6 +503,59 @@ export async function GET(req: Request) {
     });
   }
 
+  // Win/Loss per origine cliente. Aggrega tutti i preventivi (usiamo
+  // allQuotesForPipeline ma servono anche originCliente e wonAt valori).
+  const allQuotesForOrigin = await prisma.quote.findMany({
+    where: yoyWhereCommon,
+    select: {
+      originCliente: true,
+      salesStage: true,
+      status: true,
+      totalAnnual: true,
+    },
+    take: 5000,
+  });
+
+  function normalizeOrigin(s: string | null | undefined): string {
+    const t = (s || "").trim();
+    if (!t) return "Non indicato";
+    // Capitalize prima lettera, lower il resto
+    return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+  }
+
+  const originMap = new Map<string, AnalyticsByOrigin>();
+  for (const q of allQuotesForOrigin) {
+    const key = normalizeOrigin(q.originCliente);
+    if (!originMap.has(key)) {
+      originMap.set(key, {
+        origin: key,
+        total: 0,
+        won: 0,
+        lost: 0,
+        open: 0,
+        winRate: null,
+        acquiredValue: 0,
+      });
+    }
+    const row = originMap.get(key)!;
+    row.total++;
+    if (q.salesStage === "won") {
+      row.won++;
+      row.acquiredValue += q.totalAnnual || 0;
+    } else if (q.salesStage === "lost") {
+      row.lost++;
+    } else {
+      row.open++;
+    }
+  }
+  for (const row of originMap.values()) {
+    const decided = row.won + row.lost;
+    row.winRate = decided > 0 ? (row.won / decided) * 100 : null;
+  }
+  const byOrigin: AnalyticsByOrigin[] = Array.from(originMap.values()).sort(
+    (a, b) => b.acquiredValue - a.acquiredValue
+  );
+
   const body: AnalyticsResponse = {
     rangeDays,
     from: from.toISOString(),
@@ -510,6 +564,7 @@ export async function GET(req: Request) {
     pipelineByStage,
     funnel,
     cashflow12m,
+    byOrigin,
     yoy,
     quotes: quotesJson,
     payments: flatPayments,

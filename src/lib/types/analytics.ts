@@ -103,6 +103,24 @@ export type CashflowPoint = {
   expected: number;
 };
 
+/** Aggregato Win/Loss per origine cliente (passaparola, ads, partner, ecc.). */
+export type AnalyticsByOrigin = {
+  /** Etichetta normalizzata della origine ('Passaparola', 'Ads', 'Partner', etc). */
+  origin: string;
+  /** Numero totale preventivi creati con questa origine nel range. */
+  total: number;
+  /** Quanti vinti. */
+  won: number;
+  /** Quanti persi. */
+  lost: number;
+  /** Quanti ancora aperti. */
+  open: number;
+  /** Win rate = won / (won+lost) * 100. Null se nessuna chiusura ancora. */
+  winRate: number | null;
+  /** Valore acquisito totale (somma totalAnnual dei vinti). */
+  acquiredValue: number;
+};
+
 /** Vista YoY: anno corrente, anno di confronto, delta. */
 export type AnalyticsYoYView = {
   /** Anno fiscale di riferimento (es. 2026). */
@@ -142,6 +160,8 @@ export type AnalyticsResponse = {
   funnel?: AnalyticsFunnelStep[];
   /** Cashflow previsionale prossimi 12 mesi (incassi gia' garantiti). */
   cashflow12m?: CashflowPoint[];
+  /** Win/Loss per origine cliente: dove fanno meglio i preventivi e dove si perdono. */
+  byOrigin?: AnalyticsByOrigin[];
   /** Vista anno-su-anno con KPI e serie mensili. */
   yoy?: AnalyticsYoYView;
   quotes: AnalyticsQuote[];

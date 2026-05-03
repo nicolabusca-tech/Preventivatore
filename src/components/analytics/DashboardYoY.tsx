@@ -9,12 +9,11 @@ import {
   YAxis,
   Tooltip,
   Legend,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Cell,
   AreaChart,
   Area,
+  LabelList,
 } from "recharts";
 import type {
   AnalyticsResponse,
@@ -23,6 +22,7 @@ import type {
   AnalyticsFunnelStep,
   CashflowPoint,
   MonthlyPoint,
+  AnalyticsByOrigin,
 } from "@/lib/types/analytics";
 
 function formatEuro(v: number): string {
@@ -37,6 +37,68 @@ function formatEuro(v: number): string {
 function formatPct(v: number, digits = 1): string {
   if (!Number.isFinite(v)) return "—";
   return `${v.toFixed(digits)}%`;
+}
+
+/**
+ * Tooltip Recharts coerente con la palette Metodo Cantiere.
+ * Background scuro, bordo accent, font leggibile a 12px.
+ */
+function McTooltip(props: any) {
+  const { active, payload, label } = props || {};
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <div
+      style={{
+        background: "var(--mc-bg-elevated, #fff)",
+        border: "1px solid var(--mc-border, #e5e5e5)",
+        borderRadius: 8,
+        padding: "8px 10px",
+        boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+        fontSize: 12,
+        color: "var(--mc-text, #1a1a1a)",
+      }}
+    >
+      {label && (
+        <div
+          style={{
+            fontWeight: 700,
+            marginBottom: 4,
+            color: "var(--mc-text-secondary, #555)",
+            fontSize: 11,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {label}
+        </div>
+      )}
+      {payload.map((p: any, i: number) => (
+        <div
+          key={i}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: i > 0 ? 2 : 0,
+          }}
+        >
+          <span
+            style={{
+              display: "inline-block",
+              width: 10,
+              height: 10,
+              borderRadius: 2,
+              background: p.color || p.stroke || p.fill || "#999",
+            }}
+          />
+          <span style={{ color: "var(--mc-text-secondary, #555)" }}>{p.name}:</span>
+          <strong style={{ marginLeft: "auto" }}>
+            {typeof p.value === "number" ? formatEuro(p.value) : String(p.value)}
+          </strong>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function deltaBadge(deltaPct: number | null): { text: string; tone: "up" | "down" | "neutral" } {
@@ -100,38 +162,38 @@ function MonthlyYoYChart({
     <div className="card p-4 sm:p-5">
       <h3 className="text-base font-semibold mb-1">Acquisito mese per mese</h3>
       <p className="text-xs mb-4" style={{ color: "var(--mc-text-muted)" }}>
-        Confronto fra anno corrente e anno di confronto sui preventivi vinti (`wonAt`).
+        Confronto anno corrente vs anno precedente sui preventivi vinti (data wonAt).
+        Bar chart raggruppato: con pochi dati e' piu' leggibile di una linea.
       </p>
-      <div style={{ width: "100%", height: 280 }}>
+      <div style={{ width: "100%", height: 300 }}>
         <ResponsiveContainer>
-          <LineChart data={series} margin={{ top: 6, right: 12, bottom: 0, left: -10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--mc-border)" />
-            <XAxis dataKey="label" stroke="var(--mc-text-muted)" fontSize={11} />
+          <BarChart data={series} margin={{ top: 6, right: 12, bottom: 0, left: -10 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--mc-border)" vertical={false} />
+            <XAxis dataKey="label" stroke="var(--mc-text-muted)" fontSize={12} />
             <YAxis
               stroke="var(--mc-text-muted)"
-              fontSize={11}
+              fontSize={12}
               tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
             />
-            <Tooltip formatter={((v: number) => formatEuro(v)) as any} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line
-              type="monotone"
-              dataKey={String(year)}
-              stroke="#FF6A00"
-              strokeWidth={2.5}
-              dot={{ r: 3 }}
-            />
+            <Tooltip content={<McTooltip />} cursor={{ fill: "rgba(255,106,0,0.06)" }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
             {compareYear != null && (
-              <Line
-                type="monotone"
+              <Bar
                 dataKey={String(compareYear)}
-                stroke="#999"
-                strokeWidth={1.5}
-                strokeDasharray="4 4"
-                dot={{ r: 2 }}
+                fill="#999"
+                radius={[3, 3, 0, 0]}
+                isAnimationActive={true}
+                animationDuration={400}
               />
             )}
-          </LineChart>
+            <Bar
+              dataKey={String(year)}
+              fill="#FF6A00"
+              radius={[3, 3, 0, 0]}
+              isAnimationActive={true}
+              animationDuration={400}
+            />
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -170,15 +232,24 @@ function PipelineByStageChart({ data }: { data: AnalyticsPipelineByStage[] }) {
             />
             <YAxis dataKey="label" type="category" stroke="var(--mc-text-muted)" fontSize={11} width={100} />
             <Tooltip
-              formatter={
-                ((v: number, _key: string, item: { payload: { count: number } }) =>
-                  [formatEuro(v), `${item?.payload?.count ?? 0} preventivi`]) as any
-              }
+              content={<McTooltip />}
+              cursor={{ fill: "rgba(255,106,0,0.06)" }}
             />
-            <Bar dataKey="valore" radius={[0, 4, 4, 0]}>
+            <Bar dataKey="valore" radius={[0, 4, 4, 0]} isAnimationActive={true} animationDuration={400}>
               {series.map((s) => (
                 <Cell key={s.stage} fill={colors[s.stage as AnalyticsPipelineByStage["stage"]]} />
               ))}
+              <LabelList
+                dataKey="valore"
+                position="right"
+                formatter={
+                  ((v: number, _e: unknown, idx: number) => {
+                    const r = series[idx];
+                    return r ? `${r.count} · ${formatEuro(v)}` : formatEuro(v);
+                  }) as any
+                }
+                style={{ fontSize: 11, fill: "var(--mc-text)" }}
+              />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -246,14 +317,14 @@ function CashflowChart({ data }: { data: CashflowPoint[] }) {
       <div style={{ width: "100%", height: 240 }}>
         <ResponsiveContainer>
           <AreaChart data={data} margin={{ top: 6, right: 12, bottom: 0, left: -10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--mc-border)" />
-            <XAxis dataKey="label" stroke="var(--mc-text-muted)" fontSize={11} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--mc-border)" vertical={false} />
+            <XAxis dataKey="label" stroke="var(--mc-text-muted)" fontSize={12} />
             <YAxis
               stroke="var(--mc-text-muted)"
-              fontSize={11}
+              fontSize={12}
               tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`)}
             />
-            <Tooltip formatter={((v: number) => formatEuro(v)) as any} />
+            <Tooltip content={<McTooltip />} />
             <Area
               type="monotone"
               dataKey="expected"
@@ -265,6 +336,97 @@ function CashflowChart({ data }: { data: CashflowPoint[] }) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  );
+}
+
+function WinLossByOriginChart({ data }: { data: AnalyticsByOrigin[] }) {
+  // Limito a 8 origini per leggibilita'; le altre vengono raggruppate in "Altre".
+  const top = data.slice(0, 8);
+  const series = top.map((row) => ({
+    origin: row.origin,
+    won: row.won,
+    lost: row.lost,
+    open: row.open,
+    total: row.total,
+    winRate: row.winRate,
+    acquiredValue: row.acquiredValue,
+  }));
+
+  if (series.length === 0) {
+    return (
+      <div className="card p-4 sm:p-5">
+        <h3 className="text-base font-semibold mb-1">Win/Loss per origine cliente</h3>
+        <p className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
+          Compila il campo &quot;Origine cliente&quot; nei preventivi per vedere quali canali ti
+          fanno chiudere meglio.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card p-4 sm:p-5">
+      <h3 className="text-base font-semibold mb-1">Win/Loss per origine cliente</h3>
+      <p className="text-xs mb-4" style={{ color: "var(--mc-text-muted)" }}>
+        Da quale canale arrivano i preventivi che chiudi davvero. Win rate = vinti / (vinti + persi).
+      </p>
+      <div style={{ width: "100%", height: Math.max(220, series.length * 44 + 60) }}>
+        <ResponsiveContainer>
+          <BarChart data={series} layout="vertical" margin={{ top: 6, right: 28, bottom: 0, left: 0 }} barGap={2}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--mc-border)" horizontal={false} />
+            <XAxis type="number" stroke="var(--mc-text-muted)" fontSize={12} />
+            <YAxis dataKey="origin" type="category" stroke="var(--mc-text-muted)" fontSize={12} width={120} />
+            <Tooltip
+              content={
+                ((props: any) => {
+                  if (!props?.active || !props?.payload || props.payload.length === 0) return null;
+                  const row = props.payload[0]?.payload as typeof series[number];
+                  return (
+                    <div
+                      style={{
+                        background: "var(--mc-bg-elevated, #fff)",
+                        border: "1px solid var(--mc-border, #e5e5e5)",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{row.origin}</div>
+                      <div>Vinti: <strong>{row.won}</strong></div>
+                      <div>Persi: <strong>{row.lost}</strong></div>
+                      <div>Aperti: <strong>{row.open}</strong></div>
+                      <div style={{ marginTop: 4 }}>
+                        Win rate: <strong>{row.winRate != null ? `${row.winRate.toFixed(1)}%` : "—"}</strong>
+                      </div>
+                      <div>Acquisito: <strong>{formatEuro(row.acquiredValue)}</strong></div>
+                    </div>
+                  );
+                }) as any
+              }
+              cursor={{ fill: "rgba(255,106,0,0.06)" }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="won" name="Vinti" stackId="a" fill="#2D7A3E" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={400} />
+            <Bar dataKey="lost" name="Persi" stackId="a" fill="#B33A3A" radius={[0, 0, 0, 0]} isAnimationActive={true} animationDuration={400} />
+            <Bar dataKey="open" name="Aperti" stackId="a" fill="#999" radius={[0, 4, 4, 0]} isAnimationActive={true} animationDuration={400}>
+              <LabelList
+                dataKey="winRate"
+                position="right"
+                formatter={
+                  ((v: number | null) => (v == null ? "—" : `${v.toFixed(0)}%`)) as any
+                }
+                style={{ fontSize: 11, fontWeight: 700, fill: "var(--mc-text)" }}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      {data.length > 8 && (
+        <div className="text-[11px] mt-2" style={{ color: "var(--mc-text-muted)" }}>
+          Mostrate le prime 8 origini per acquisito. Le altre {data.length - 8} sono nascoste.
+        </div>
+      )}
     </div>
   );
 }
@@ -339,6 +501,12 @@ export function DashboardYoY({ data }: DashboardYoYProps) {
         {funnel && funnel.length > 0 && <FunnelChart data={funnel} />}
         {cashflow && cashflow.length > 0 && <CashflowChart data={cashflow} />}
       </div>
+
+      {/* Win/Loss per origine: full-width, e' la metrica piu' utile per decidere
+         dove investire tempo/budget commerciale. */}
+      {data.byOrigin && data.byOrigin.length > 0 && (
+        <WinLossByOriginChart data={data.byOrigin} />
+      )}
 
       <div className="text-xs" style={{ color: "var(--mc-text-muted)" }}>
         {wonRatio}.

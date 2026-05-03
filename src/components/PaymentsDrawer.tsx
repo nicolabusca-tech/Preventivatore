@@ -121,6 +121,54 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
     return { outstanding, paid };
   }, [payments]);
 
+  // ========================================
+  // Piano pagamenti personalizzato (custom)
+  // Hooks tenuti SOPRA l'early return per rispettare Rules of Hooks.
+  // ========================================
+  const [showCustomBuilder, setShowCustomBuilder] = useState(false);
+  const [customDepositMode, setCustomDepositMode] = useState<"amount" | "percent">("amount");
+  const [customDepositAmount, setCustomDepositAmount] = useState<string>("");
+  const [customDepositPercent, setCustomDepositPercent] = useState<string>("30");
+  const [customDepositDate, setCustomDepositDate] = useState<string>(""); // ISO date
+  const [customDepositMethod, setCustomDepositMethod] = useState<"bank" | "card">("bank");
+  const [customNumInstallments, setCustomNumInstallments] = useState<string>("4");
+  const [customFirstInstDate, setCustomFirstInstDate] = useState<string>(""); // ISO date
+
+  // Default: acconto oggi, prima rata fra 1 mese
+  useEffect(() => {
+    if (!quote) return;
+    const today = new Date();
+    if (!customDepositDate) {
+      setCustomDepositDate(today.toISOString().slice(0, 10));
+    }
+    if (!customFirstInstDate) {
+      const next = new Date(today.getFullYear(), today.getMonth() + 1, 1, 12, 0, 0, 0);
+      setCustomFirstInstDate(next.toISOString().slice(0, 10));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote?.id]);
+
+  // Anteprima locale: usata SOLO per mostrare a video l'anteprima dell'acconto
+  // e delle rate prima di chiamare l'API. Il calcolo finale avviene server-side.
+  const customPreview = useMemo(() => {
+    if (!quote) return null;
+    const total = Math.max(0, Math.round(quote.totalOneTime || 0));
+    const depositAmount = customDepositMode === "amount"
+      ? Math.max(0, Math.min(total, Math.round(Number(customDepositAmount) || 0)))
+      : Math.max(0, Math.min(total, Math.round((total * (Number(customDepositPercent) || 0)) / 100)));
+    const remainder = Math.max(0, total - depositAmount);
+    const n = Math.max(0, Math.min(60, Math.floor(Number(customNumInstallments) || 0)));
+    const base = n > 0 ? Math.floor(remainder / n) : 0;
+    const last = n > 0 ? remainder - base * (n - 1) : 0;
+    return { total, depositAmount, remainder, n, base, last };
+  }, [
+    quote?.totalOneTime,
+    customDepositMode,
+    customDepositAmount,
+    customDepositPercent,
+    customNumInstallments,
+  ]);
+
   if (!open || !quote) return null;
 
   async function patchQuote(payload: Record<string, unknown>) {
@@ -174,49 +222,7 @@ export default function PaymentsDrawer({ open, onClose, quote, payments, onChang
   // ========================================
   // Piano pagamenti personalizzato (custom)
   // ========================================
-  const [showCustomBuilder, setShowCustomBuilder] = useState(false);
-  const [customDepositMode, setCustomDepositMode] = useState<"amount" | "percent">("amount");
-  const [customDepositAmount, setCustomDepositAmount] = useState<string>("");
-  const [customDepositPercent, setCustomDepositPercent] = useState<string>("30");
-  const [customDepositDate, setCustomDepositDate] = useState<string>(""); // ISO date
-  const [customDepositMethod, setCustomDepositMethod] = useState<"bank" | "card">("bank");
-  const [customNumInstallments, setCustomNumInstallments] = useState<string>("4");
-  const [customFirstInstDate, setCustomFirstInstDate] = useState<string>(""); // ISO date
-
-  // Default: acconto oggi, prima rata fra 1 mese
-  useEffect(() => {
-    if (!quote) return;
-    const today = new Date();
-    if (!customDepositDate) {
-      setCustomDepositDate(today.toISOString().slice(0, 10));
-    }
-    if (!customFirstInstDate) {
-      const next = new Date(today.getFullYear(), today.getMonth() + 1, 1, 12, 0, 0, 0);
-      setCustomFirstInstDate(next.toISOString().slice(0, 10));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quote?.id]);
-
-  // Anteprima locale: usata SOLO per mostrare a video l'anteprima dell'acconto
-  // e delle rate prima di chiamare l'API. Il calcolo finale avviene server-side.
-  const customPreview = useMemo(() => {
-    if (!quote) return null;
-    const total = Math.max(0, Math.round(quote.totalOneTime || 0));
-    const depositAmount = customDepositMode === "amount"
-      ? Math.max(0, Math.min(total, Math.round(Number(customDepositAmount) || 0)))
-      : Math.max(0, Math.min(total, Math.round((total * (Number(customDepositPercent) || 0)) / 100)));
-    const remainder = Math.max(0, total - depositAmount);
-    const n = Math.max(0, Math.min(60, Math.floor(Number(customNumInstallments) || 0)));
-    const base = n > 0 ? Math.floor(remainder / n) : 0;
-    const last = n > 0 ? remainder - base * (n - 1) : 0;
-    return { total, depositAmount, remainder, n, base, last };
-  }, [
-    quote?.totalOneTime,
-    customDepositMode,
-    customDepositAmount,
-    customDepositPercent,
-    customNumInstallments,
-  ]);
+  // (gli hooks sono spostati piu' in alto, prima del return early, per rispettare le Rules of Hooks.)
 
   async function generatePlanCustom() {
     if (!customPreview || !quote) return;
